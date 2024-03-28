@@ -30,9 +30,9 @@
 
 #pragma config DEBUG = OFF      // Disable In-Circuit Debugger
 
-#define KHZ 1000
+#define KHZ 1000UL
 #define MHZ (KHZ * KHZ)
-#define _XTAL_FREQ 40 * MHZ
+#define _XTAL_FREQ (40UL * MHZ)
 
 // ============================ //
 //             End              //
