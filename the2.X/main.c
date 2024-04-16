@@ -55,6 +55,8 @@
 
 #define IS_OUTSIDE(x, y) x < 0 || x > 3 || y > 7 || y < 0
 
+#define bit __bit
+
 typedef struct Tetromino
 {
     char x, y; //position of top left corner
@@ -78,7 +80,16 @@ unsigned char lastPortB;
 
 void InitBoard()
 {
-    // Initialize all board cells to 0
+    TRISC = 0x00; 
+    TRISD = 0x00;
+    TRISE = 0x00;
+    TRISF = 0x00;
+    
+    PORTC = 0x00;
+    PORTB = 0x00;
+    PORTD = 0x00;
+    PORTF = 0x00;
+    
     for (char i = 0; i < 8; i++)
     {
         for (char j = 0; j < 4; j++)
@@ -86,6 +97,8 @@ void InitBoard()
             board[i][j] = 0;
         }
     }
+    
+    board[2][3] = 1;
 }
 
 void InitInterrupts()
@@ -93,7 +106,8 @@ void InitInterrupts()
     INTCONbits.GIE = 1; // Global Interrupt Enable
     INTCONbits.PEIE = 1; // Peripheral Interrupt Enable
     INTCONbits.RBIE = 1;
-    TRISBbits = 0b01100000;
+    
+    TRISB = 0b01100000;
 }
 
 void InitTimers()
@@ -150,27 +164,50 @@ void UpdateBoard()
 
 void RenderBoard()
 {
-    
+    PORTCbits.RC0 = board[0][0];
+    PORTDbits.RD0 = board[0][1];
+    PORTEbits.RE0 = board[0][2];
+    PORTFbits.RF0 = board[0][3];
+
+    PORTCbits.RC1 = board[1][0];
+    PORTDbits.RD1 = board[1][1];
+    PORTEbits.RE1 = board[1][2];
+    PORTFbits.RF1 = board[1][3];
+
+    PORTCbits.RC2 = board[2][0];
+    PORTDbits.RD2 = board[2][1];
+    PORTEbits.RE2 = board[2][2];
+    PORTFbits.RF2 = board[2][3];
+
+    PORTCbits.RC3 = board[3][0];
+    PORTDbits.RD3 = board[3][1];
+    PORTEbits.RE3 = board[3][2];
+    PORTFbits.RF3 = board[3][3];
+
+    PORTCbits.RC4 = board[4][0];
+    PORTDbits.RD4 = board[4][1];
+    PORTEbits.RE4 = board[4][2];
+    PORTFbits.RF4 = board[4][3];
+
+    PORTCbits.RC5 = board[5][0];
+    PORTDbits.RD5 = board[5][1];
+    PORTEbits.RE5 = board[5][2];
+    PORTFbits.RF5 = board[5][3];
+
+    PORTCbits.RC6 = board[6][0];
+    PORTDbits.RD6 = board[6][1];
+    PORTEbits.RE6 = board[6][2];
+    PORTFbits.RF6 = board[6][3];
+
+    PORTCbits.RC7 = board[7][0];
+    PORTDbits.RD7 = board[7][1];
+    PORTEbits.RE7 = board[7][2];
+    PORTFbits.RF7 = board[7][3];
 }
 
 // ============================ //
 //   INTERRUPT SERVICE ROUTINE  //
 // ============================ //
-__interrupt(high_priority)
-void HandleInterrupt()
-{
-    if (INTCONbits.TMR0IF) 
-    {
-        HandleTimer();
-        INTCONbits.TMR0IF = 0; // Clear Timer0 interrupt flag
-    }
-    else if (INTCONbits.RBIF)
-    {
-        HandlePortB();
-        INTCONbits.RBIF = 0;
-    }
-}
-
 void HandleTimer()
 {
     
@@ -212,6 +249,21 @@ void HandlePortB()
 
     lastPortB = portBState; // Update last known state of Port B
     // INTCONbits.RBIF = 0; // Clear the interrupt flag
+}
+
+__interrupt(high_priority)
+void HandleInterrupt()
+{
+    if (INTCONbits.TMR0IF) 
+    {
+        HandleTimer();
+        INTCONbits.TMR0IF = 0; // Clear Timer0 interrupt flag
+    }
+    else if (INTCONbits.RBIF)
+    {
+        HandlePortB();
+        INTCONbits.RBIF = 0;
+    }
 }
 
 // ============================ //
