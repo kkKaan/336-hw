@@ -48,14 +48,23 @@
 #define SQUARE_PIECE {.x = 0, .y = 0, .shape = {1, 1, 1, 1}}
 #define L_PIECE {.x = 0, .y = 0, .shape = {1, 1, 1, 0}}
 
+#define TOP_LEFT curTet.shape[0]
+#define TOP_RIGHT curTet.shape[1]
+#define BOTTOM_LEFT curTet.shape[2]
+#define BOTTOM_RIGHT curTet.shape[3]
+
+#define IS_OUTSIDE(x, y) x < 0 || x > 3 || y > 7 || y < 0
+
 typedef struct Tetromino
 {
     char x, y; //position of top left corner
-    bit shape[4];
+    bit shape[4]; // top left, top right, bottom right, bottom left
 } Tetromino;
 
-Tetromino curTetromino;
+Tetromino curTet;
 bit board[8][4];
+
+unsigned char lastPortB;
 
 // ============================ //
 //          GLOBALS             //
@@ -83,6 +92,8 @@ void InitInterrupts()
 {
     INTCONbits.GIE = 1; // Global Interrupt Enable
     INTCONbits.PEIE = 1; // Peripheral Interrupt Enable
+    INTCONbits.RBIE = 1;
+    TRISBbits = 0b01100000;
 }
 
 void InitTimers()
@@ -92,12 +103,49 @@ void InitTimers()
     INTCONbits.TMR0IE = 1; // Enable Timer0 interrupt
 }
 
+int BitwiseAnd(bit region1[4], bit region2[4])
+{
+    for (int i = 0; i < 4; ++i)
+        if (region1[i] & region2[i]) return 1;
+    
+    return 0;
+}
+
+void ExtractBoard(char x, char y, bit reg[4])
+{
+    reg[0] = IS_OUTSIDE(x,y) ? 1 : board[y][x];
+    reg[1] = IS_OUTSIDE(x,y) ? 1 : board[y][x+1];
+    reg[2] = IS_OUTSIDE(x,y) ? 1 : board[y+1][x+1];
+    reg[3] = IS_OUTSIDE(x,y) ? 1 : board[y+1][x];
+}
+
+/*
+ * dir0, dir1: 1, 0 > +x direction
+ * dir0, dir1: 0, 0 > -x direction
+ * dir0, dir1: 0, 1 > +y direction
+ * dir0, dir1: 1, 1 > -y direction
+ */
+bit CheckCollision(bit dir0, bit dir1)
+{
+    bit reg[4];
+    
+    ExtractBoard(dir1 == 0 ? ( dir0 == 0 ? curTet.x - 1 : curTet.x + 1) : curTet.x, 
+                 (dir1 == 1) ? : curTet.y + dir1, reg); //black magic
+    
+    return BitwiseAnd(reg, curTet.shape);
+}
+
 void UpdateBoard()
 {
-    board[curTetromino.y][curTetromino.x] = curTetromino.shape[0];
-    board[curTetromino.y][curTetromino.x + 1] = curTetromino.shape[1];
-    board[curTetromino.y + 1][curTetromino.x + 1] = curTetromino.shape[2];
-    board[curTetromino.y + 1][curTetromino.x] = curTetromino.shape[3];
+    /*
+     * Bitwise ORed, since if board value is 1 and 
+     * tetromino's value is 0 at the same position, it should not set board to 0
+     */
+    
+    board[curTet.y][curTet.x] |= curTet.shape[0];
+    board[curTet.y][curTet.x + 1] |= curTet.shape[1];
+    board[curTet.y + 1][curTet.x + 1] |= curTet.shape[2];
+    board[curTet.y + 1][curTet.x] |= curTet.shape[3];
 }
 
 void RenderBoard()
@@ -130,7 +178,7 @@ void HandleTimer()
 
 void HandlePortB()
 {
-    // Logic for handling PortB interrupts
+    
 }
 
 // ============================ //
