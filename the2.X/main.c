@@ -62,34 +62,40 @@ bit board[8][4];
 //          FUNCTIONS           //
 // ============================ //
 
-
 void InitBoard()
 {
-    
+    // Initialize all board cells to 0
+    for (int i = 0; i < 8; i++) {
+        for (int j = 0; j < 4; j++) {
+            board[i][j] = 0;
+        }
+    }
 }
 
 void InitInterrupts()
 {
-    
+    // Initialize Interrupts
+    INTCONbits.GIE = 1; // Global Interrupt Enable
+    INTCONbits.PEIE = 1; // Peripheral Interrupt Enable
 }
-
 
 void InitTimers()
 {
-    
+    // Initialize Timer0
+    T0CON = 0x07; // Set Timer0 to increment every 256 clock cycles
+    TMR0 = 0; // Set Timer0 count to 0
+    INTCONbits.TMR0IE = 1; // Enable Timer0 interrupt
 }
 
 void UpdateBoard()
 {
-    
+    // Logic to update board states based on game rules
 }
 
 void RenderBoard()
 {
-    
+    // Logic to render the board on a display
 }
-
-// You can write function definitions here...
 
 // ============================ //
 //   INTERRUPT SERVICE ROUTINE  //
@@ -97,17 +103,21 @@ void RenderBoard()
 __interrupt(high_priority)
 void HandleInterrupt()
 {
-    
+    if (INTCONbits.TMR0IF) {
+        HandleTimer();
+        INTCONbits.TMR0IF = 0; // Clear Timer0 interrupt flag
+    }
 }
 
 void HandleTimer()
 {
-    
+    // Timer0 interrupt service routine
+    UpdateBoard();
 }
 
 void HandlePortB()
 {
-    
+    // Logic for handling PortB interrupts
 }
 
 // ============================ //
@@ -115,5 +125,11 @@ void HandlePortB()
 // ============================ //
 void main()
 {
-    
+    InitBoard();
+    InitTimers();
+    InitInterrupts();
+
+    while (1) {
+        RenderBoard();
+    }
 }
