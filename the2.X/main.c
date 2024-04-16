@@ -44,7 +44,13 @@
 //        DEFINITIONS           //
 // ============================ //
 
-// You can write struct definitions here...
+struct Tetromino
+{
+    char x, y; //position of top left corner
+    bit shape[4];
+};
+
+bit board[8][4];
 
 // ============================ //
 //          GLOBALS             //
@@ -56,6 +62,33 @@
 //          FUNCTIONS           //
 // ============================ //
 
+
+void InitBoard()
+{
+    
+}
+
+void InitInterrupts()
+{
+    
+}
+
+
+void InitTimers()
+{
+    
+}
+
+void UpdateBoard()
+{
+    
+}
+
+void RenderBoard()
+{
+    
+}
+
 // You can write function definitions here...
 
 // ============================ //
@@ -64,7 +97,17 @@
 __interrupt(high_priority)
 void HandleInterrupt()
 {
-    // ISR ...
+    
+}
+
+void HandleTimer()
+{
+    
+}
+
+void HandlePortB()
+{
+    
 }
 
 // ============================ //
@@ -72,5 +115,5 @@ void HandleInterrupt()
 // ============================ //
 void main()
 {
-    // Main ...
+    
 }
