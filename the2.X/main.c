@@ -178,7 +178,40 @@ void HandleTimer()
 
 void HandlePortB()
 {
-    
+    unsigned char portBState = PORTB; // Read the current state of Port B
+    unsigned char changedBits = portBState ^ lastPortB; // Determine which bits have changed
+
+    // Specifically check for changes in bits 5 and 6
+    if (changedBits & (1 << 5)) 
+    { // Check if RB5 has changed
+        if (portBState & (1 << 5))
+        {
+            // Handle logic for RB5 going high
+            // Example: printf("RB5 went high\n");
+        }
+        else
+        {
+            // Handle logic for RB5 going low
+            // Example: printf("RB5 went low\n");
+        }
+    }
+
+    if (changedBits & (1 << 6))
+    { // Check if RB6 has changed
+        if (portBState & (1 << 6))
+        {
+            // Handle logic for RB6 going high
+            // Example: printf("RB6 went high\n");
+        }
+        else
+        {
+            // Handle logic for RB6 going low
+            // Example: printf("RB6 went low\n");
+        }
+    }
+
+    lastPortB = portBState; // Update last known state of Port B
+    // INTCONbits.RBIF = 0; // Clear the interrupt flag
 }
 
 // ============================ //
