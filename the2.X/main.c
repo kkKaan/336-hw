@@ -53,12 +53,14 @@
 #define BOTTOM_LEFT  curTet.shape.b2
 #define BOTTOM_RIGHT curTet.shape.b3
 
-#define GET_BOARD(x, y)    ((board.col##x >> y) & 0x01)
-#define SET_BOARD(x, y, v) board.col##x |= (v << y)
-
 #define IS_OUTSIDE(x, y) (x < 0 || x > 3 || y > 7 || y < 0)
 
 #define bit _Bool
+
+// TODO: Change to appropriate values
+#define T_PRESCALER    0x07
+#define T_PRELOAD_HIGH 0x34
+#define T_PRELOAD_LOW  0xC1
 
 typedef union
 {
@@ -149,16 +151,16 @@ void ChangeBoard(char x, char y, char v)
     switch (x)
     {
         case 0:
-            board.col0 = (board.col0 & ~((char)1 << y)) | ((char)v << y);
+            board.col0 = (char) ((board.col0 & ~((char)1 << y)) | (v << y));
             break;
         case 1:
-            board.col1 = (board.col1 & ~((char)1 << y)) | ((char)v << y);
+            board.col1 = (char) ((board.col1 & ~((char)1 << y)) | (v << y));
             break;
         case 2:
-            board.col2 = (board.col2 & ~((char)1 << y)) | ((char)v << y);
+            board.col2 = (char) ((board.col2 & ~((char)1 << y)) | (v << y));
             break;
         case 3:
-            board.col3 = (board.col3 & ~((char)1 << y)) | ((char)v << y);
+            board.col3 = (char) ((board.col3 & ~((char)1 << y)) | (v << y));
             break;
     }
 }
@@ -186,20 +188,29 @@ char GetBoard(char x, char y)
 
 void InitTimers()
 {
-    T0CON = 0x07; // Set Timer0 to increment every 256 clock cycles
-    TMR0 = 0; // Set Timer0 count to 0
-    INTCONbits.TMR0IE = 1; // Enable Timer0 interrupt
+    T0CON = 0x00;           // Reset Timer0
+
+    T0CON |= T_PRESCALER;   // Load prescaler
+    TMR0H = T_PRELOAD_HIGH; // Pre-load the value
+    TMR0L = T_PRELOAD_LOW;
+
+    T0CONbits.TMR0ON = 1;   // Enable Timer0
 }
 
 void InitInterrupts()
 {
     // TODO: Check the current state of RBIF in INTCON
 
-    INTCONbits.GIE  = 1; // Global Interrupt Enable
-    INTCONbits.PEIE = 0; // Peripheral Interrupt Enable
-    INTCONbits.RBIE = 1; // PORTB Interrupt Enable
+    INTCON &= 0b00000111;  // Clear all flags except flags
 
-    TRISB = 0b01100000; // PORTB5 and PORTB6 as inputs
+    RCONbits.IPEN = 0;     // Disable interrupt priorities
+
+    INTCONbits.GIE    = 1; // Enable global interrupts
+    INTCONbits.PEIE   = 0; // Disable peripheral interrupts
+    INTCONbits.TMR0IE = 1; // Enable TMR0 interrupts
+    INTCONbits.RBIE   = 1; // Enable RB Port interrupts
+
+    TRISB = 0b01100000;    // PORTB5 and PORTB6 as inputs
 }
 
 int BitwiseAnd(bit region1[4], bit region2[4])
