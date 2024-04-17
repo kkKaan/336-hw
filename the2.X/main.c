@@ -44,24 +44,21 @@
 //        DEFINITIONS           //
 // ============================ //
 
+#define TOP_LEFT     curTet.shape.b0
+#define TOP_RIGHT    curTet.shape.b1
+#define BOTTOM_LEFT  curTet.shape.b2
+#define BOTTOM_RIGHT curTet.shape.b3
+
+#define IS_OUTSIDE(x, y) (x < 0 || x > 3 || y > 7 || y < 0)
+
 // TODO: Change to appropriate values
 #define T_PRESCALER    0x07
 #define T_PRELOAD_HIGH 0x34
 #define T_PRELOAD_LOW  0xC1
 
-#define TOP_LEFT curTet.shape.b0
-#define TOP_RIGHT curTet.shape.b1
-#define BOTTOM_LEFT curTet.shape.b2
-#define BOTTOM_RIGHT curTet.shape.b3
-
-#define GET_BOARD(x, y) ((board.col##x >> y) & 0x01)
-#define SET_BOARD(x, y, v) board.col##x |= (v << y)
-
-#define IS_OUTSIDE(x, y) (x < 0 || x > 3 || y > 7 || y < 0)
-
 #define bit _Bool
 
-typedef union Shape
+typedef union
 {
     char byte;
     
@@ -79,8 +76,7 @@ typedef union Shape
     };
 } Shape;
 
-
-typedef struct Board
+typedef struct
 {
     char col0;
     char col1;
@@ -88,16 +84,16 @@ typedef struct Board
     char col3;
 } Board;
 
-typedef struct Tetromino
+typedef struct
 {
     char type;
-    char x, y; //position of top left corner
+    char x, y; // position of top left corner
     Shape shape;
 } Tetromino;
 
-static const Tetromino DOT_PIECE = {.x = 0, .y = 0, .shape = { .byte = 0x80 }};
-static const Tetromino SQUARE_PIECE = { .x = 0, .y = 0, .shape = { .byte = 0xF0 }};
-static const Tetromino L_PIECE = {.x = 0, .y = 0, .shape = { .byte = 0xE0 }};
+static const Tetromino DOT_PIECE    = {.x = 0, .y = 0, .shape = { .byte = 0x80 }};
+static const Tetromino SQUARE_PIECE = {.x = 0, .y = 0, .shape = { .byte = 0xF0 }};
+static const Tetromino L_PIECE      = {.x = 0, .y = 0, .shape = { .byte = 0xE0 }};
 
 char prevA;
 
@@ -106,7 +102,28 @@ Board board;
 
 unsigned char lastPortB;
 
+void InitBoard();
+void SetBoard(char x, char y, char v);
+char GetBoard(char x, char y);
+
+void InitInterrupts();
+void InitTimers();
+
+void Update();
+void Render();
+
+void ListenPortA();
+void UpdateBoard();
+
+int BitwiseAnd(Shape shape1, Shape shape2);
+void GetQuartet(char x, char y, Shape *shape);
+void SetQuartet(char x, char y, Shape *shape);
+void ExtractBoard(char x, char y, Shape *shape);
+bit CheckCollision(bit dir0, bit dir1);
 void RotateShape(Shape *shape);
+
+void HandleTimer();
+void HandlePortB();
 
 // ============================ //
 //          GLOBALS             //
@@ -117,6 +134,31 @@ void RotateShape(Shape *shape);
 // ============================ //
 //          FUNCTIONS           //
 // ============================ //
+
+void InitBoard()
+{
+    TRISC = 0x00; 
+    TRISD = 0x00;
+    TRISE = 0x00;
+    TRISF = 0x00;
+    
+    PORTC = 0x00;
+    PORTB = 0x00;
+    PORTD = 0x00;
+    PORTF = 0x00;
+    
+    for (char i = 0; i < 8; i++)
+    {
+        for (char j = 0; j < 4; j++)
+        {
+            SetBoard(j, i, 1);
+        }
+    }
+    
+    SetBoard(2, 3, 1);
+    curTet = L_PIECE;
+    RotateShape(&curTet.shape);
+}
 
 void SetBoard(char x, char y, char v)
 {
@@ -159,31 +201,6 @@ char GetBoard(char x, char y)
     return ((col >> y) & 0x01);
 }
 
-void InitBoard()
-{
-    TRISC = 0x00; 
-    TRISD = 0x00;
-    TRISE = 0x00;
-    TRISF = 0x00;
-    
-    PORTC = 0x00;
-    PORTB = 0x00;
-    PORTD = 0x00;
-    PORTF = 0x00;
-    
-    for (char i = 0; i < 8; i++)
-    {
-        for (char j = 0; j < 4; j++)
-        {
-            SetBoard(j, i, 1);
-        }
-    }
-    
-    SetBoard(2, 3, 1);
-    curTet = L_PIECE;
-    RotateShape(&curTet.shape);
-}
-
 void InitInterrupts()
 {
     // TODO: Check the current state of RBIF in INTCON
@@ -211,6 +228,38 @@ void InitTimers()
     TMR0L = T_PRELOAD_LOW;
 
     T0CONbits.TMR0ON = 1;   // Enable Timer0
+}
+
+void Update()
+{
+    ListenPortA();
+    UpdateBoard();
+}
+
+void Render()
+{
+    PORTC = board.col0;
+    PORTD = board.col1;
+    PORTE = board.col2;
+    PORTF = board.col3;
+}
+
+void ListenPortA()
+{
+    
+}
+
+void UpdateBoard()
+{
+    /*
+     * Bitwise ORed, since if board value is 1 and 
+     * tetromino's value is 0 at the same position, it should not set board to 0
+     */
+    
+    Shape bq;
+    GetQuartet(curTet.x, curTet.y, &bq);
+    bq.byte |= curTet.shape.byte;
+    SetQuartet(curTet.x, curTet.y, &bq);
 }
 
 int BitwiseAnd(Shape shape1, Shape shape2)
@@ -264,44 +313,28 @@ void RotateShape(Shape *shape)
     shape->r3 = 0;
 }
 
-void ListenPortA()
-{
-    
-}
-
-void UpdateBoard()
-{
-    /*
-     * Bitwise ORed, since if board value is 1 and 
-     * tetromino's value is 0 at the same position, it should not set board to 0
-     */
-    
-    Shape bq;
-    GetQuartet(curTet.x, curTet.y, &bq);
-    bq.byte |= curTet.shape.byte;
-    SetQuartet(curTet.x, curTet.y, &bq);
-}
-
-void Update()
-{
-    ListenPortA();
-    UpdateBoard();
-}
-
-void Render()
-{
-    PORTC = board.col0;
-    PORTD = board.col1;
-    PORTE = board.col2;
-    PORTF = board.col3;
-}
-
 // ============================ //
 //   INTERRUPT SERVICE ROUTINE  //
 // ============================ //
+
+__interrupt(high_priority)
+void HandleInterrupt()
+{
+    if (INTCONbits.TMR0IF) 
+    {
+        HandleTimer();
+        INTCONbits.TMR0IF = 0; // Clear TMR0 interrupt flag
+    }
+    else if (INTCONbits.RBIF)
+    {
+        HandlePortB();
+        INTCONbits.RBIF = 0; // Clear RB port interrupt flag
+    }
+}
+
 void HandleTimer()
 {
-    //TODO: timer
+    // TODO: timer
 }
 
 void HandlePortB()
@@ -337,21 +370,6 @@ void HandlePortB()
     }
 
     lastPortB = portBState; // Update last known state of Port B
-}
-
-__interrupt(high_priority)
-void HandleInterrupt()
-{
-    if (INTCONbits.TMR0IF) 
-    {
-        HandleTimer();
-        INTCONbits.TMR0IF = 0; // Clear Timer0 interrupt flag
-    }
-    else if (INTCONbits.RBIF)
-    {
-        HandlePortB();
-        INTCONbits.RBIF = 0;
-    }
 }
 
 // ============================ //
