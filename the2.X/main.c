@@ -96,9 +96,9 @@ unsigned char lastPortB;
 void InitBoard();
 void SetBoard(char x, char y, char v);
 char GetBoard(char x, char y);
-
-void InitInterrupts();
 void InitTimers();
+void InitInterrupts();
+
 int BitwiseAnd(bit region1[4], bit region2[4]);
 void ExtractBoard(char x, char y, Shape *shape);
 bit CheckCollision(bit dir0, bit dir1);
@@ -118,17 +118,20 @@ void HandlePortB();
 // ============================ //
 //          FUNCTIONS           //
 // ============================ //
+
 void InitBoard()
 {
-    TRISC = 0x00; 
+    // Write to LAT, read from PORT
+    LATC = 0x00;
+    LATB = 0x00;
+    LATD = 0x00;
+    LATF = 0x00;
+
+    // All outputs
+    TRISC = 0x00;
     TRISD = 0x00;
     TRISE = 0x00;
     TRISF = 0x00;
-
-    PORTC = 0x00;
-    PORTB = 0x00;
-    PORTD = 0x00;
-    PORTF = 0x00;
 
     for (char i = 0; i < 8; i++)
     {
@@ -139,7 +142,6 @@ void InitBoard()
     }
 
     SetBoard(2, 3, 1);
-
 }
 
 void SetBoard(char x, char y, char v)
@@ -182,20 +184,22 @@ char GetBoard(char x, char y)
     return ((col >> y) & 0x01);
 }
 
-void InitInterrupts()
-{
-    INTCONbits.GIE = 1; // Global Interrupt Enable
-    INTCONbits.PEIE = 1; // Peripheral Interrupt Enable
-    INTCONbits.RBIE = 1;
-    
-    TRISB = 0b01100000;
-}
-
 void InitTimers()
 {
     T0CON = 0x07; // Set Timer0 to increment every 256 clock cycles
     TMR0 = 0; // Set Timer0 count to 0
     INTCONbits.TMR0IE = 1; // Enable Timer0 interrupt
+}
+
+void InitInterrupts()
+{
+    // TODO: Check the current state of RBIF in INTCON
+
+    INTCONbits.GIE  = 1; // Global Interrupt Enable
+    INTCONbits.PEIE = 0; // Peripheral Interrupt Enable
+    INTCONbits.RBIE = 1; // PORTB Interrupt Enable
+
+    TRISB = 0b01100000; // PORTB5 and PORTB6 as inputs
 }
 
 int BitwiseAnd(bit region1[4], bit region2[4])
@@ -249,6 +253,7 @@ void RenderBoard()
 // ============================ //
 //   INTERRUPT SERVICE ROUTINE  //
 // ============================ //
+
 __interrupt(high_priority)
 void HandleInterrupt()
 {
@@ -310,6 +315,7 @@ void HandlePortB()
 // ============================ //
 //            MAIN              //
 // ============================ //
+
 void main()
 {
     InitBoard();
