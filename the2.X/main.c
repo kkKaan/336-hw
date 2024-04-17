@@ -44,39 +44,38 @@
 //        DEFINITIONS           //
 // ============================ //
 
-#define DOT_PIECE    {.x = 0, .y = 0, .shape = {1, 0, 0, 0}}
-#define SQUARE_PIECE {.x = 0, .y = 0, .shape = {1, 1, 1, 1}}
-#define L_PIECE      {.x = 0, .y = 0, .shape = {1, 1, 1, 0}}
-
-#define TOP_LEFT     curTet.shape.b0
-#define TOP_RIGHT    curTet.shape.b1
-#define BOTTOM_LEFT  curTet.shape.b2
+#define TOP_LEFT curTet.shape.b0
+#define TOP_RIGHT curTet.shape.b1
+#define BOTTOM_LEFT curTet.shape.b2
 #define BOTTOM_RIGHT curTet.shape.b3
+
+#define GET_BOARD(x, y) ((board.col##x >> y) & 0x01)
+#define SET_BOARD(x, y, v) board.col##x |= (v << y)
 
 #define IS_OUTSIDE(x, y) (x < 0 || x > 3 || y > 7 || y < 0)
 
 #define bit _Bool
 
-// TODO: Change to appropriate values
-#define T_PRESCALER    0x07
-#define T_PRELOAD_HIGH 0x34
-#define T_PRELOAD_LOW  0xC1
-
-typedef union
+typedef union Shape
 {
     char byte;
-
+    
     struct
     {
-        unsigned int b0: 1;
-        unsigned int b1: 1;
-        unsigned int b2: 1;
+        unsigned int r0: 1;
+        unsigned int r1: 1;
+        unsigned int r2: 1;
+        unsigned int r3: 1;
+        
         unsigned int b3: 1;
-        unsigned int br: 4;
+        unsigned int b2: 1;
+        unsigned int b1: 1;
+        unsigned int b0: 1;
     };
 } Shape;
 
-typedef struct
+
+typedef struct Board
 {
     char col0;
     char col1;
@@ -86,30 +85,23 @@ typedef struct
 
 typedef struct Tetromino
 {
-    char x, y; // position of top left corner
+    char type;
+    char x, y; //position of top left corner
     Shape shape;
 } Tetromino;
+
+static const Tetromino DOT_PIECE = {.x = 0, .y = 0, .shape = { .byte = 0x80 }};
+static const Tetromino SQUARE_PIECE = { .x = 0, .y = 0, .shape = { .byte = 0xF0 }};
+static const Tetromino L_PIECE = {.x = 0, .y = 0, .shape = { .byte = 0xE0 }};
+
+char prevA;
 
 Tetromino curTet;
 Board board;
 
 unsigned char lastPortB;
 
-void InitBoard();
-void ChangeBoard(char x, char y, char v);
-char GetBoard(char x, char y);
-void InitTimers();
-void InitInterrupts();
-
-int BitwiseAnd(bit region1[4], bit region2[4]);
-void ExtractBoard(char x, char y, Shape *shape);
-bit CheckCollision(bit dir0, bit dir1);
-
-void UpdateBoard();
-void RenderBoard();
-
-void HandleTimer();
-void HandlePortB();
+void RotateShape(Shape *shape);
 
 // ============================ //
 //          GLOBALS             //
@@ -121,48 +113,23 @@ void HandlePortB();
 //          FUNCTIONS           //
 // ============================ //
 
-void InitBoard()
-{
-    // Write to LAT, read from PORT
-    LATC = 0x00;
-    LATB = 0x00;
-    LATD = 0x00;
-    LATF = 0x00;
-
-    // All outputs
-    TRISC = 0x00;
-    TRISD = 0x00;
-    TRISE = 0x00;
-    TRISF = 0x00;
-
-    for (char i = 0; i < 8; i++)
-    {
-        for (char j = 0; j < 4; j++)
-        {
-            ChangeBoard(j, i, 0);
-        }
-    }
-
-    ChangeBoard(2, 3, 1);
-}
-
-void ChangeBoard(char x, char y, char v)
+void SetBoard(char x, char y, char v)
 {
     switch (x)
     {
         case 0:
-            board.col0 = (char) ((board.col0 & ~((char)1 << y)) | (v << y));
+            board.col0 = v == 1 ? board.col0 | (v << y) : board.col0 & ~(1 << y);
             break;
         case 1:
-            board.col1 = (char) ((board.col1 & ~((char)1 << y)) | (v << y));
+            board.col1 = v == 1 ? board.col1 | (v << y) : board.col1 & ~(1 << y);
             break;
         case 2:
-            board.col2 = (char) ((board.col2 & ~((char)1 << y)) | (v << y));
+            board.col2 = v == 1 ? board.col2 | (v << y) : board.col2 & ~(1 << y);
             break;
         case 3:
-            board.col3 = (char) ((board.col3 & ~((char)1 << y)) | (v << y));
+            board.col3 = v == 1 ? board.col3 | (v << y) : board.col3 & ~(1 << y);
             break;
-    }
+    };
 }
 
 char GetBoard(char x, char y)
@@ -183,47 +150,77 @@ char GetBoard(char x, char y)
             col = board.col3;
             break;
     }
+    
     return ((col >> y) & 0x01);
 }
 
-void InitTimers()
+void InitBoard()
 {
-    T0CON = 0x00;           // Reset Timer0
-
-    T0CON |= T_PRESCALER;   // Load prescaler
-    TMR0H = T_PRELOAD_HIGH; // Pre-load the value
-    TMR0L = T_PRELOAD_LOW;
-
-    T0CONbits.TMR0ON = 1;   // Enable Timer0
+    TRISC = 0x00; 
+    TRISD = 0x00;
+    TRISE = 0x00;
+    TRISF = 0x00;
+    
+    PORTC = 0x00;
+    PORTB = 0x00;
+    PORTD = 0x00;
+    PORTF = 0x00;
+    
+    for (char i = 0; i < 8; i++)
+    {
+        for (char j = 0; j < 4; j++)
+        {
+            SetBoard(j, i, 1);
+        }
+    }
+    
+    SetBoard(2, 3, 1);
+    curTet = L_PIECE;
+    RotateShape(&curTet.shape);
 }
 
 void InitInterrupts()
 {
-    // TODO: Check the current state of RBIF in INTCON
-
-    INTCON &= 0b00000111;  // Clear all flags except flags
-
-    RCONbits.IPEN = 0;     // Disable interrupt priorities
-
-    INTCONbits.GIE    = 1; // Enable global interrupts
-    INTCONbits.PEIE   = 0; // Disable peripheral interrupts
-    INTCONbits.TMR0IE = 1; // Enable TMR0 interrupts
-    INTCONbits.RBIE   = 1; // Enable RB Port interrupts
-
-    TRISB = 0b01100000;    // PORTB5 and PORTB6 as inputs
+    INTCONbits.GIE = 1; // Global Interrupt Enable
+    INTCONbits.PEIE = 1; // Peripheral Interrupt Enable
+    INTCONbits.RBIE = 1;
+    
+    TRISB = 0b01100000;
 }
 
-int BitwiseAnd(bit region1[4], bit region2[4])
+void InitTimers()
 {
-    for (int i = 0; i < 4; ++i)
-        if (region1[i] & region2[i]) return 1;
+    T0CON = 0x07; // Set Timer0 to increment every 256 clock cycles
+    TMR0 = 0; // Set Timer0 count to 0
+    INTCONbits.TMR0IE = 1; // Enable Timer0 interrupt
+}
+
+int BitwiseAnd(Shape shape1, Shape shape2)
+{
+    if (shape1.b0 && shape2.b0) return 1;
+    if (shape1.b1 && shape2.b1) return 1;
+    if (shape1.b2 && shape2.b2) return 1;
+    if (shape1.b3 && shape2.b3) return 1;
     
     return 0;
 }
 
-void ExtractBoard(char x, char y, Shape *shape)
+//From board
+void GetQuartet(char x, char y, Shape *shape)
 {
+    shape->b0 = GetBoard(x, y);
+    shape->b1 = GetBoard(x + 1, y);
+    shape->b2 = GetBoard(x + 1, y + 1);
+    shape->b3 = GetBoard(x, y + 1);
+}
 
+//Set board
+void SetQuartet(char x, char y, Shape *shape)
+{
+    SetBoard(x, y, (char) shape->b0);
+    SetBoard(x + 1, y, (char) shape->b1);
+    SetBoard(x + 1, y + 1, (char) shape->b2);
+    SetBoard(x, y + 1, (char) shape->b3);
 }
 
 /*
@@ -234,13 +231,24 @@ void ExtractBoard(char x, char y, Shape *shape)
  */
 bit CheckCollision(bit dir0, bit dir1)
 {
-    bit reg[4];
+    Shape shape;
     
-    ExtractBoard(dir1 == 0 ? ( dir0 == 0 ? curTet.x - 1 : curTet.x + 1) : curTet.x, 
-                 (dir1 == 1) ? curTet.y : curTet.y + dir1, reg); //black magic
+    GetQuartet(dir1 == 0 ? ( dir0 == 0 ? curTet.x - 1 : curTet.x + 1) : curTet.x, 
+                 (dir1 == 1) ? curTet.y : curTet.y + dir1, &shape); //black magic
     
-    //return BitwiseAnd(reg, curTet.shape);
-    return 0;
+    return BitwiseAnd(shape, curTet.shape);
+}
+
+void RotateShape(Shape *shape)
+{
+    shape->byte >>= 1;
+    shape->b0 = shape->r3;
+    shape->r3 = 0;
+}
+
+void ListenPortA()
+{
+    if (PORTAbits.RA0)
 }
 
 void UpdateBoard()
@@ -250,10 +258,19 @@ void UpdateBoard()
      * tetromino's value is 0 at the same position, it should not set board to 0
      */
     
-    
+    Shape bq;
+    GetQuartet(curTet.x, curTet.y, &bq);
+    bq.byte |= curTet.shape.byte;
+    SetQuartet(curTet.x, curTet.y, &bq);
 }
 
-void RenderBoard()
+void Update()
+{
+    ListenPortA();
+    UpdateBoard();
+}
+
+void Render()
 {
     PORTC = board.col0;
     PORTD = board.col1;
@@ -264,6 +281,45 @@ void RenderBoard()
 // ============================ //
 //   INTERRUPT SERVICE ROUTINE  //
 // ============================ //
+void HandleTimer()
+{
+    //TODO: timer
+}
+
+void HandlePortB()
+{
+    unsigned char portBState = PORTB; // Read the current state of Port B
+    unsigned char changedBits = portBState ^ lastPortB; // Determine which bits have changed
+
+    // Specifically check for changes in bits 5 and 6
+    if (changedBits & (1 << 5)) 
+    { // Check if RB5 has changed
+        if (portBState & (1 << 5))
+        {
+            // TODO: Handle logic for RB5 going high
+
+        }
+        else
+        {
+            // TODO: Handle logic for RB5 going low
+
+        }
+    }
+
+    if (changedBits & (1 << 6))
+    { // Check if RB6 has changed
+        if (portBState & (1 << 6))
+        {
+            // TODO: Handle logic for RB6 going high
+        }
+        else
+        {
+            // TODO: Handle logic for RB6 going low
+        }
+    }
+
+    lastPortB = portBState; // Update last known state of Port B
+}
 
 __interrupt(high_priority)
 void HandleInterrupt()
@@ -280,53 +336,9 @@ void HandleInterrupt()
     }
 }
 
-void HandleTimer()
-{
-    
-}
-
-void HandlePortB()
-{
-    unsigned char portBState = PORTB; // Read the current state of Port B
-    unsigned char changedBits = portBState ^ lastPortB; // Determine which bits have changed
-
-    // Specifically check for changes in bits 5 and 6
-    if (changedBits & (1 << 5)) 
-    { // Check if RB5 has changed
-        if (portBState & (1 << 5))
-        {
-            // Handle logic for RB5 going high
-            // Example: printf("RB5 went high\n");
-        }
-        else
-        {
-            // Handle logic for RB5 going low
-            // Example: printf("RB5 went low\n");
-        }
-    }
-
-    if (changedBits & (1 << 6))
-    { // Check if RB6 has changed
-        if (portBState & (1 << 6))
-        {
-            // Handle logic for RB6 going high
-            // Example: printf("RB6 went high\n");
-        }
-        else
-        {
-            // Handle logic for RB6 going low
-            // Example: printf("RB6 went low\n");
-        }
-    }
-
-    lastPortB = portBState; // Update last known state of Port B
-    // INTCONbits.RBIF = 0; // Clear the interrupt flag
-}
-
 // ============================ //
 //            MAIN              //
 // ============================ //
-
 void main()
 {
     InitBoard();
@@ -335,7 +347,7 @@ void main()
 
     while (1) 
     {
-        UpdateBoard();
-        RenderBoard();
+        Update();
+        Render();
     }
 }
