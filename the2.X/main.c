@@ -94,7 +94,7 @@ Board board;
 unsigned char lastPortB;
 
 void InitBoard();
-void SetBoard(char x, char y, char v);
+void ChangeBoard(char x, char y, char v);
 char GetBoard(char x, char y);
 void InitTimers();
 void InitInterrupts();
@@ -137,28 +137,28 @@ void InitBoard()
     {
         for (char j = 0; j < 4; j++)
         {
-            SetBoard(j, i, 0);
+            ChangeBoard(j, i, 0);
         }
     }
 
-    SetBoard(2, 3, 1);
+    ChangeBoard(2, 3, 1);
 }
 
-void SetBoard(char x, char y, char v)
+void ChangeBoard(char x, char y, char v)
 {
     switch (x)
     {
         case 0:
-            board.col0 |= (v << y);
+            board.col0 = (board.col0 & ~((char)1 << y)) | ((char)v << y);
             break;
         case 1:
-            board.col1 |= (v << y);
+            board.col1 = (board.col1 & ~((char)1 << y)) | ((char)v << y);
             break;
         case 2:
-            board.col2 |= (v << y);
+            board.col2 = (board.col2 & ~((char)1 << y)) | ((char)v << y);
             break;
         case 3:
-            board.col3 |= (v << y);
+            board.col3 = (board.col3 & ~((char)1 << y)) | ((char)v << y);
             break;
     }
 }
