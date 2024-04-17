@@ -100,6 +100,7 @@ char prevA;
 Tetromino curTet;
 Board board;
 
+char lastPortA;
 char lastPortB;
 
 void InitBoard();
@@ -115,11 +116,11 @@ char GetBoard(char x, char y);
 void ListenPortA();
 void UpdateBoard();
 
-int BitwiseAnd(Shape shape1, Shape shape2);
+char BitwiseAnd(Shape shape1, Shape shape2);
 void GetQuartet(char x, char y, Shape *shape);
 void SetQuartet(char x, char y, Shape *shape);
 void ExtractBoard(char x, char y, Shape *shape);
-bit CheckCollision(bit dir0, bit dir1);
+char CheckCollision(bit dir0, bit dir1);
 void RotateShape(Shape *shape);
 
 void HandleTimer();
@@ -137,6 +138,16 @@ void HandlePortB();
 
 void InitBoard()
 {
+    // 0, 1, 2, 3rd bits are inputs
+    LATA &= 0b00001111;
+    TRISA = 0b00001111;
+    lastPortA = PORTA;
+
+    // 5, 6th bits are inputs
+    LATB &= 0b01100000;
+    TRISB = 0b01100000;
+    lastPortB = PORTB;
+
     // Write to LAT, read from PORT
     LATC = 0x00;
     LATB = 0x00;
@@ -246,7 +257,59 @@ char GetBoard(char x, char y)
 
 void ListenPortA()
 {
-    
+    // Read the current state of Port A
+    char currentPortA = PORTA;
+    // Determine which bits have changed
+    char changedBits = currentPortA ^ lastPortA;
+
+    // Specifically check for changes in bits 0, 1, 2, 3
+    if (changedBits & (1 << 0)) // right
+    {
+        if (currentPortA & (1 << 0))
+        {
+            // TODO: Check CheckCollision
+            if(!CheckCollision(1, 0))
+            {
+                curTet.x++;
+            }
+        }
+    }
+
+    if (changedBits & (1 << 1)) // up
+    {
+        if (currentPortA & (1 << 1))
+        {
+            if(!CheckCollision(0, 1))
+            {
+                curTet.y--;
+            }
+        }
+    }
+
+    if (changedBits & (1 << 2)) // down
+    {
+        if (currentPortA & (1 << 2))
+        {
+            if(!CheckCollision(1, 1))
+            {
+                curTet.y++;
+            }
+        }
+    }
+
+    if (changedBits & (1 << 3)) // left
+    {
+        if (currentPortA & (1 << 3))
+        {
+            if(!CheckCollision(0, 0))
+            {
+                curTet.x--;
+            }
+        }
+    }
+
+    // Update last known state of Port A
+    lastPortA = currentPortA;
 }
 
 void UpdateBoard()
@@ -262,7 +325,7 @@ void UpdateBoard()
     SetQuartet(curTet.x, curTet.y, &bq);
 }
 
-int BitwiseAnd(Shape shape1, Shape shape2)
+char BitwiseAnd(Shape shape1, Shape shape2)
 {
     if (shape1.b0 && shape2.b0) return 1;
     if (shape1.b1 && shape2.b1) return 1;
@@ -296,7 +359,7 @@ void SetQuartet(char x, char y, Shape *shape)
  * dir0, dir1: 0, 1 > +y direction
  * dir0, dir1: 1, 1 > -y direction
  */
-bit CheckCollision(bit dir0, bit dir1)
+char CheckCollision(bit dir0, bit dir1)
 {
     Shape shape;
     
