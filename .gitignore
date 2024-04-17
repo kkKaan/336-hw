@@ -51,3 +51,4 @@ Module.symvers
 Mkfile.old
 dkms.conf
 /the2.X/build/
+/the2.X/dist/

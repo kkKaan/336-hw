@@ -48,23 +48,50 @@
 #define SQUARE_PIECE {.x = 0, .y = 0, .shape = {1, 1, 1, 1}}
 #define L_PIECE {.x = 0, .y = 0, .shape = {1, 1, 1, 0}}
 
-#define TOP_LEFT curTet.shape[0]
-#define TOP_RIGHT curTet.shape[1]
-#define BOTTOM_LEFT curTet.shape[2]
-#define BOTTOM_RIGHT curTet.shape[3]
+#define TOP_LEFT curTet.shape.b0
+#define TOP_RIGHT curTet.shape.b1
+#define BOTTOM_LEFT curTet.shape.b2
+#define BOTTOM_RIGHT curTet.shape.b3
 
-#define IS_OUTSIDE(x, y) x < 0 || x > 3 || y > 7 || y < 0
+#define GET_BOARD(x, y) ((board.col##x >> y) & 0x01)
+#define SET_BOARD(x, y, v) board.col##x |= (v << y)
 
-#define bit __bit
+#define IS_OUTSIDE(x, y) (x < 0 || x > 3 || y > 7 || y < 0)
+
+#define bit _Bool
+
+typedef union Shape
+{
+    char byte;
+    
+    struct
+    {
+        unsigned int b0: 1;
+        unsigned int b1: 1;
+        unsigned int b2: 1;
+        unsigned int b3: 1;
+        unsigned int br: 4;
+    };
+} Shape;
+
+
+typedef struct Board
+{
+    char col0;
+    char col1;
+    char col2;
+    char col3;
+} Board;
 
 typedef struct Tetromino
 {
     char x, y; //position of top left corner
-    bit shape[4]; // top left, top right, bottom right, bottom left
+    Shape shape;
 } Tetromino;
 
+
 Tetromino curTet;
-bit board[8][4];
+Board board;
 
 unsigned char lastPortB;
 
@@ -77,6 +104,48 @@ unsigned char lastPortB;
 // ============================ //
 //          FUNCTIONS           //
 // ============================ //
+
+void SetBoard(char x, char y, char v)
+{
+    
+    switch (x)
+    {
+        case 0:
+            board.col0 |= (v << y);
+            break;
+        case 1:
+            board.col1 |= (v << y);
+            break;
+        case 2:
+            board.col2 |= (v << y);
+            break;
+        case 3:
+            board.col3 |= (v << y);
+            break;
+    };
+}
+
+char GetBoard(char x, char y)
+{
+    char col;
+    switch (x)
+    {
+        case 0:
+            col = board.col0;
+            break;
+        case 1:
+            col = board.col1;
+            break;
+        case 2:
+            col = board.col2;
+            break;
+        case 3:
+            col = board.col3;
+            break;
+    }
+    
+    return ((col >> y) & 0x01);
+}
 
 void InitBoard()
 {
@@ -94,11 +163,12 @@ void InitBoard()
     {
         for (char j = 0; j < 4; j++)
         {
-            board[i][j] = 0;
+            SetBoard(j, i, 0);
         }
     }
     
-    board[2][3] = 1;
+    SetBoard(2, 3, 1);
+    
 }
 
 void InitInterrupts()
@@ -125,12 +195,9 @@ int BitwiseAnd(bit region1[4], bit region2[4])
     return 0;
 }
 
-void ExtractBoard(char x, char y, bit reg[4])
+void ExtractBoard(char x, char y, Shape *shape)
 {
-    reg[0] = IS_OUTSIDE(x,y) ? 1 : board[y][x];
-    reg[1] = IS_OUTSIDE(x,y) ? 1 : board[y][x+1];
-    reg[2] = IS_OUTSIDE(x,y) ? 1 : board[y+1][x+1];
-    reg[3] = IS_OUTSIDE(x,y) ? 1 : board[y+1][x];
+
 }
 
 /*
@@ -144,9 +211,10 @@ bit CheckCollision(bit dir0, bit dir1)
     bit reg[4];
     
     ExtractBoard(dir1 == 0 ? ( dir0 == 0 ? curTet.x - 1 : curTet.x + 1) : curTet.x, 
-                 (dir1 == 1) ? : curTet.y + dir1, reg); //black magic
+                 (dir1 == 1) ? curTet.y : curTet.y + dir1, reg); //black magic
     
-    return BitwiseAnd(reg, curTet.shape);
+    //return BitwiseAnd(reg, curTet.shape);
+    return 0;
 }
 
 void UpdateBoard()
@@ -156,53 +224,15 @@ void UpdateBoard()
      * tetromino's value is 0 at the same position, it should not set board to 0
      */
     
-    board[curTet.y][curTet.x] |= curTet.shape[0];
-    board[curTet.y][curTet.x + 1] |= curTet.shape[1];
-    board[curTet.y + 1][curTet.x + 1] |= curTet.shape[2];
-    board[curTet.y + 1][curTet.x] |= curTet.shape[3];
+    
 }
 
 void RenderBoard()
 {
-    PORTCbits.RC0 = board[0][0];
-    PORTDbits.RD0 = board[0][1];
-    PORTEbits.RE0 = board[0][2];
-    PORTFbits.RF0 = board[0][3];
-
-    PORTCbits.RC1 = board[1][0];
-    PORTDbits.RD1 = board[1][1];
-    PORTEbits.RE1 = board[1][2];
-    PORTFbits.RF1 = board[1][3];
-
-    PORTCbits.RC2 = board[2][0];
-    PORTDbits.RD2 = board[2][1];
-    PORTEbits.RE2 = board[2][2];
-    PORTFbits.RF2 = board[2][3];
-
-    PORTCbits.RC3 = board[3][0];
-    PORTDbits.RD3 = board[3][1];
-    PORTEbits.RE3 = board[3][2];
-    PORTFbits.RF3 = board[3][3];
-
-    PORTCbits.RC4 = board[4][0];
-    PORTDbits.RD4 = board[4][1];
-    PORTEbits.RE4 = board[4][2];
-    PORTFbits.RF4 = board[4][3];
-
-    PORTCbits.RC5 = board[5][0];
-    PORTDbits.RD5 = board[5][1];
-    PORTEbits.RE5 = board[5][2];
-    PORTFbits.RF5 = board[5][3];
-
-    PORTCbits.RC6 = board[6][0];
-    PORTDbits.RD6 = board[6][1];
-    PORTEbits.RE6 = board[6][2];
-    PORTFbits.RF6 = board[6][3];
-
-    PORTCbits.RC7 = board[7][0];
-    PORTDbits.RD7 = board[7][1];
-    PORTEbits.RE7 = board[7][2];
-    PORTFbits.RF7 = board[7][3];
+    PORTC = board.col0;
+    PORTD = board.col1;
+    PORTE = board.col2;
+    PORTF = board.col3;
 }
 
 // ============================ //
