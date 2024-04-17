@@ -103,14 +103,14 @@ Board board;
 unsigned char lastPortB;
 
 void InitBoard();
-void SetBoard(char x, char y, char v);
-char GetBoard(char x, char y);
-
-void InitInterrupts();
 void InitTimers();
+void InitInterrupts();
 
 void Update();
 void Render();
+
+void SetBoard(char x, char y, char v);
+char GetBoard(char x, char y);
 
 void ListenPortA();
 void UpdateBoard();
@@ -137,16 +137,18 @@ void HandlePortB();
 
 void InitBoard()
 {
-    TRISC = 0x00; 
+    // Write to LAT, read from PORT
+    LATC = 0x00;
+    LATB = 0x00;
+    LATD = 0x00;
+    LATF = 0x00;
+
+    // All outputs
+    TRISC = 0x00;
     TRISD = 0x00;
     TRISE = 0x00;
     TRISF = 0x00;
-    
-    PORTC = 0x00;
-    PORTB = 0x00;
-    PORTD = 0x00;
-    PORTF = 0x00;
-    
+
     for (char i = 0; i < 8; i++)
     {
         for (char j = 0; j < 4; j++)
@@ -154,10 +156,51 @@ void InitBoard()
             SetBoard(j, i, 1);
         }
     }
-    
+
     SetBoard(2, 3, 1);
     curTet = L_PIECE;
     RotateShape(&curTet.shape);
+}
+
+void InitTimers()
+{
+    T0CON = 0x00;           // Reset Timer0
+
+    T0CON |= T_PRESCALER;   // Load prescaler
+    TMR0H = T_PRELOAD_HIGH; // Pre-load the value
+    TMR0L = T_PRELOAD_LOW;
+
+    T0CONbits.TMR0ON = 1;   // Enable Timer0
+}
+
+void InitInterrupts()
+{
+    // TODO: Check the current state of RBIF in INTCON
+
+    INTCON &= 0b00000111;  // Clear all flags except flags
+
+    RCONbits.IPEN = 0;     // Disable interrupt priorities
+
+    INTCONbits.GIE    = 1; // Enable global interrupts
+    INTCONbits.PEIE   = 0; // Disable peripheral interrupts
+    INTCONbits.TMR0IE = 1; // Enable TMR0 interrupts
+    INTCONbits.RBIE   = 1; // Enable RB Port interrupts
+
+    TRISB = 0b01100000;    // PORTB5 and PORTB6 as inputs
+}
+
+void Update()
+{
+    ListenPortA();
+    UpdateBoard();
+}
+
+void Render()
+{
+    PORTC = board.col0;
+    PORTD = board.col1;
+    PORTE = board.col2;
+    PORTF = board.col3;
 }
 
 void SetBoard(char x, char y, char v)
@@ -199,49 +242,6 @@ char GetBoard(char x, char y)
     }
     
     return ((col >> y) & 0x01);
-}
-
-void InitInterrupts()
-{
-    // TODO: Check the current state of RBIF in INTCON
-
-    INTCON &= 0b00000111;  // Clear all flags except flags
-
-    RCONbits.IPEN = 0;     // Disable interrupt priorities
-
-    INTCONbits.GIE    = 1; // Enable global interrupts
-    INTCONbits.PEIE   = 0; // Disable peripheral interrupts
-    INTCONbits.TMR0IE = 1; // Enable TMR0 interrupts
-    INTCONbits.RBIE   = 1; // Enable RB Port interrupts
-
-    TRISB = 0b01100000;    // PORTB5 and PORTB6 as inputs
-}
-
-void InitTimers()
-{
-    T0CON = 0x00;           // Reset Timer0
-    TMR0 = 0; // Set Timer0 count to 0
-
-    INTCONbits.TMR0IE = 1; // Enable Timer0 interrupt
-    T0CON |= T_PRESCALER;   // Load prescaler
-    TMR0H = T_PRELOAD_HIGH; // Pre-load the value
-    TMR0L = T_PRELOAD_LOW;
-
-    T0CONbits.TMR0ON = 1;   // Enable Timer0
-}
-
-void Update()
-{
-    ListenPortA();
-    UpdateBoard();
-}
-
-void Render()
-{
-    PORTC = board.col0;
-    PORTD = board.col1;
-    PORTE = board.col2;
-    PORTF = board.col3;
 }
 
 void ListenPortA()
