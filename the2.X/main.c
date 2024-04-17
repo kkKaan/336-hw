@@ -44,26 +44,26 @@
 //        DEFINITIONS           //
 // ============================ //
 
-#define DOT_PIECE {.x = 0, .y = 0, .shape = {1, 0, 0, 0}}
+#define DOT_PIECE    {.x = 0, .y = 0, .shape = {1, 0, 0, 0}}
 #define SQUARE_PIECE {.x = 0, .y = 0, .shape = {1, 1, 1, 1}}
-#define L_PIECE {.x = 0, .y = 0, .shape = {1, 1, 1, 0}}
+#define L_PIECE      {.x = 0, .y = 0, .shape = {1, 1, 1, 0}}
 
-#define TOP_LEFT curTet.shape.b0
-#define TOP_RIGHT curTet.shape.b1
-#define BOTTOM_LEFT curTet.shape.b2
+#define TOP_LEFT     curTet.shape.b0
+#define TOP_RIGHT    curTet.shape.b1
+#define BOTTOM_LEFT  curTet.shape.b2
 #define BOTTOM_RIGHT curTet.shape.b3
 
-#define GET_BOARD(x, y) ((board.col##x >> y) & 0x01)
+#define GET_BOARD(x, y)    ((board.col##x >> y) & 0x01)
 #define SET_BOARD(x, y, v) board.col##x |= (v << y)
 
 #define IS_OUTSIDE(x, y) (x < 0 || x > 3 || y > 7 || y < 0)
 
 #define bit _Bool
 
-typedef union Shape
+typedef union
 {
     char byte;
-    
+
     struct
     {
         unsigned int b0: 1;
@@ -74,8 +74,7 @@ typedef union Shape
     };
 } Shape;
 
-
-typedef struct Board
+typedef struct
 {
     char col0;
     char col1;
@@ -85,15 +84,30 @@ typedef struct Board
 
 typedef struct Tetromino
 {
-    char x, y; //position of top left corner
+    char x, y; // position of top left corner
     Shape shape;
 } Tetromino;
-
 
 Tetromino curTet;
 Board board;
 
 unsigned char lastPortB;
+
+void InitBoard();
+void SetBoard(char x, char y, char v);
+char GetBoard(char x, char y);
+
+void InitInterrupts();
+void InitTimers();
+int BitwiseAnd(bit region1[4], bit region2[4]);
+void ExtractBoard(char x, char y, Shape *shape);
+bit CheckCollision(bit dir0, bit dir1);
+
+void UpdateBoard();
+void RenderBoard();
+
+void HandleTimer();
+void HandlePortB();
 
 // ============================ //
 //          GLOBALS             //
@@ -104,10 +118,32 @@ unsigned char lastPortB;
 // ============================ //
 //          FUNCTIONS           //
 // ============================ //
+void InitBoard()
+{
+    TRISC = 0x00; 
+    TRISD = 0x00;
+    TRISE = 0x00;
+    TRISF = 0x00;
+
+    PORTC = 0x00;
+    PORTB = 0x00;
+    PORTD = 0x00;
+    PORTF = 0x00;
+
+    for (char i = 0; i < 8; i++)
+    {
+        for (char j = 0; j < 4; j++)
+        {
+            SetBoard(j, i, 0);
+        }
+    }
+
+    SetBoard(2, 3, 1);
+
+}
 
 void SetBoard(char x, char y, char v)
 {
-    
     switch (x)
     {
         case 0:
@@ -122,7 +158,7 @@ void SetBoard(char x, char y, char v)
         case 3:
             board.col3 |= (v << y);
             break;
-    };
+    }
 }
 
 char GetBoard(char x, char y)
@@ -143,32 +179,7 @@ char GetBoard(char x, char y)
             col = board.col3;
             break;
     }
-    
     return ((col >> y) & 0x01);
-}
-
-void InitBoard()
-{
-    TRISC = 0x00; 
-    TRISD = 0x00;
-    TRISE = 0x00;
-    TRISF = 0x00;
-    
-    PORTC = 0x00;
-    PORTB = 0x00;
-    PORTD = 0x00;
-    PORTF = 0x00;
-    
-    for (char i = 0; i < 8; i++)
-    {
-        for (char j = 0; j < 4; j++)
-        {
-            SetBoard(j, i, 0);
-        }
-    }
-    
-    SetBoard(2, 3, 1);
-    
 }
 
 void InitInterrupts()
@@ -238,6 +249,21 @@ void RenderBoard()
 // ============================ //
 //   INTERRUPT SERVICE ROUTINE  //
 // ============================ //
+__interrupt(high_priority)
+void HandleInterrupt()
+{
+    if (INTCONbits.TMR0IF) 
+    {
+        HandleTimer();
+        INTCONbits.TMR0IF = 0; // Clear Timer0 interrupt flag
+    }
+    else if (INTCONbits.RBIF)
+    {
+        HandlePortB();
+        INTCONbits.RBIF = 0;
+    }
+}
+
 void HandleTimer()
 {
     
@@ -279,21 +305,6 @@ void HandlePortB()
 
     lastPortB = portBState; // Update last known state of Port B
     // INTCONbits.RBIF = 0; // Clear the interrupt flag
-}
-
-__interrupt(high_priority)
-void HandleInterrupt()
-{
-    if (INTCONbits.TMR0IF) 
-    {
-        HandleTimer();
-        INTCONbits.TMR0IF = 0; // Clear Timer0 interrupt flag
-    }
-    else if (INTCONbits.RBIF)
-    {
-        HandlePortB();
-        INTCONbits.RBIF = 0;
-    }
 }
 
 // ============================ //
