@@ -100,7 +100,7 @@ char prevA;
 Tetromino curTet;
 Board board;
 
-unsigned char lastPortB;
+char lastPortB;
 
 void InitBoard();
 void InitTimers();
@@ -339,37 +339,28 @@ void HandleTimer()
 
 void HandlePortB()
 {
-    unsigned char portBState = PORTB; // Read the current state of Port B
-    unsigned char changedBits = portBState ^ lastPortB; // Determine which bits have changed
+    char currentPortB = PORTB; // Read the current state of Port B
+    char changedBits = currentPortB ^ lastPortB; // Determine which bits have changed
 
     // Specifically check for changes in bits 5 and 6
-    if (changedBits & (1 << 5)) 
-    { // Check if RB5 has changed
-        if (portBState & (1 << 5))
+    if (changedBits & (1 << 5)) // Check if RB5 has changed
+    {
+        if (currentPortB & (1 << 5))
         {
-            // TODO: Handle logic for RB5 going high
-
-        }
-        else
-        {
-            // TODO: Handle logic for RB5 going low
-
+            // TODO: Only rotate for L-piece
+            RotateShape(&curTet.shape);
         }
     }
 
-    if (changedBits & (1 << 6))
-    { // Check if RB6 has changed
-        if (portBState & (1 << 6))
+    if (changedBits & (1 << 6)) // Check if RB6 has changed
+    {
+        if (currentPortB & (1 << 6))
         {
-            // TODO: Handle logic for RB6 going high
-        }
-        else
-        {
-            // TODO: Handle logic for RB6 going low
+            // TODO: Submit();
         }
     }
 
-    lastPortB = portBState; // Update last known state of Port B
+    lastPortB = currentPortB; // Update last known state of Port B
 }
 
 // ============================ //
