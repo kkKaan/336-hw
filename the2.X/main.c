@@ -44,6 +44,11 @@
 //        DEFINITIONS           //
 // ============================ //
 
+// TODO: Change to appropriate values
+#define T_PRESCALER    0x07
+#define T_PRELOAD_HIGH 0x34
+#define T_PRELOAD_LOW  0xC1
+
 #define TOP_LEFT curTet.shape.b0
 #define TOP_RIGHT curTet.shape.b1
 #define BOTTOM_LEFT curTet.shape.b2
@@ -181,18 +186,31 @@ void InitBoard()
 
 void InitInterrupts()
 {
-    INTCONbits.GIE = 1; // Global Interrupt Enable
-    INTCONbits.PEIE = 1; // Peripheral Interrupt Enable
-    INTCONbits.RBIE = 1;
-    
-    TRISB = 0b01100000;
+    // TODO: Check the current state of RBIF in INTCON
+
+    INTCON &= 0b00000111;  // Clear all flags except flags
+
+    RCONbits.IPEN = 0;     // Disable interrupt priorities
+
+    INTCONbits.GIE    = 1; // Enable global interrupts
+    INTCONbits.PEIE   = 0; // Disable peripheral interrupts
+    INTCONbits.TMR0IE = 1; // Enable TMR0 interrupts
+    INTCONbits.RBIE   = 1; // Enable RB Port interrupts
+
+    TRISB = 0b01100000;    // PORTB5 and PORTB6 as inputs
 }
 
 void InitTimers()
 {
-    T0CON = 0x07; // Set Timer0 to increment every 256 clock cycles
+    T0CON = 0x00;           // Reset Timer0
     TMR0 = 0; // Set Timer0 count to 0
+
     INTCONbits.TMR0IE = 1; // Enable Timer0 interrupt
+    T0CON |= T_PRESCALER;   // Load prescaler
+    TMR0H = T_PRELOAD_HIGH; // Pre-load the value
+    TMR0L = T_PRELOAD_LOW;
+
+    T0CONbits.TMR0ON = 1;   // Enable Timer0
 }
 
 int BitwiseAnd(Shape shape1, Shape shape2)
@@ -248,7 +266,7 @@ void RotateShape(Shape *shape)
 
 void ListenPortA()
 {
-    if (PORTAbits.RA0)
+    
 }
 
 void UpdateBoard()
