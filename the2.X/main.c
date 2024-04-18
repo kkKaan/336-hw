@@ -120,7 +120,7 @@ char BitwiseAnd(Shape shape1, Shape shape2);
 void GetQuartet(char x, char y, Shape *shape);
 void SetQuartet(char x, char y, Shape *shape);
 void ExtractBoard(char x, char y, Shape *shape);
-char CheckCollision(bit dir0, bit dir1);
+char IsColliding(bit dir0, bit dir1);
 void RotateShape(Shape *shape);
 
 void HandleTimer();
@@ -141,12 +141,14 @@ void InitBoard()
     ADCON1 = 0x0F;
 
     // 0, 1, 2, 3rd bits are inputs
-    LATA &= 0b00001111;
+    PORTA = 0x00;
+    LATA = 0x00;
     TRISA = 0b00001111;
     lastPortA = PORTA;
 
     // 5, 6th bits are inputs
-    LATB &= 0b01100000;
+    PORTB = 0x00;
+    LATB = 0x00;
     TRISB = 0b01100000;
     lastPortB = PORTB;
 
@@ -170,7 +172,7 @@ void InitBoard()
         }
     }
 
-    SetBoard(2, 3, 1);
+    //SetBoard(2, 3, 1);
     curTet = L_PIECE;
     RotateShape(&curTet.shape);
 }
@@ -210,10 +212,10 @@ void Update()
 
 void Render()
 {
-    PORTC = board.col0;
-    PORTD = board.col1;
-    PORTE = board.col2;
-    PORTF = board.col3;
+    LATC = board.col0;
+    LATD = board.col1;
+    LATE = board.col2;
+    LATF = board.col3;
 }
 
 void SetBoard(char x, char y, char v)
@@ -270,7 +272,7 @@ void ListenPortA()
         if (currentPortA & (1 << 0))
         {
             // TODO: Check CheckCollision
-            if(!CheckCollision(1, 0))
+            if(!IsColliding(1, 0))
             {
                 curTet.x++;
             }
@@ -281,7 +283,7 @@ void ListenPortA()
     {
         if (currentPortA & (1 << 1))
         {
-            if(!CheckCollision(0, 1))
+            if(!IsColliding(0, 1))
             {
                 curTet.y--;
             }
@@ -292,7 +294,7 @@ void ListenPortA()
     {
         if (currentPortA & (1 << 2))
         {
-            if(!CheckCollision(1, 1))
+            if(!IsColliding(1, 1))
             {
                 curTet.y++;
             }
@@ -303,7 +305,7 @@ void ListenPortA()
     {
         if (currentPortA & (1 << 3))
         {
-            if(!CheckCollision(0, 0))
+            if(!IsColliding(0, 0))
             {
                 curTet.x--;
             }
@@ -361,14 +363,27 @@ void SetQuartet(char x, char y, Shape *shape)
  * dir0, dir1: 0, 1 > +y direction
  * dir0, dir1: 1, 1 > -y direction
  */
-char CheckCollision(bit dir0, bit dir1)
+char IsColliding(bit dir0, bit dir1)
 {
     Shape shape;
+
+    SetBoard(curTet.x, curTet.y, curTet.shape.b0 ^ GetBoard(curTet.x, curTet.y));
+    SetBoard(curTet.x + 1, curTet.y, curTet.shape.b1 ^ GetBoard(curTet.x + 1, curTet.y));
+    SetBoard(curTet.x, curTet.y + 1, curTet.shape.b2 ^ GetBoard(curTet.x, curTet.y + 1));
+    SetBoard(curTet.x + 1, curTet.y + 1, curTet.shape.b3 ^ GetBoard(curTet.x + 1, curTet.y + 1));
+
+    GetQuartet((dir1 == 0) ? ( dir0 == 0 ? curTet.x - 1 : curTet.x + 1) : curTet.x, 
+               (dir1 == 1) ? ( dir0 == 0 ? curTet.y + 1 : curTet.y - 1) : curTet.y,
+               &shape); //black magic
     
-    GetQuartet(dir1 == 0 ? ( dir0 == 0 ? curTet.x - 1 : curTet.x + 1) : curTet.x, 
-                 (dir1 == 1) ? curTet.y : curTet.y + dir1, &shape); //black magic
-    
-    return BitwiseAnd(shape, curTet.shape);
+    char returnVal = BitwiseAnd(shape, curTet.shape);
+
+    SetBoard(curTet.x, curTet.y, curTet.shape.b0 ^ GetBoard(curTet.x, curTet.y));
+    SetBoard(curTet.x + 1, curTet.y, curTet.shape.b1 ^ GetBoard(curTet.x + 1, curTet.y));
+    SetBoard(curTet.x, curTet.y + 1, curTet.shape.b2 ^ GetBoard(curTet.x, curTet.y + 1));
+    SetBoard(curTet.x + 1, curTet.y + 1, curTet.shape.b3 ^ GetBoard(curTet.x + 1, curTet.y + 1));
+
+    return returnVal;
 }
 
 void RotateShape(Shape *shape)
@@ -434,8 +449,8 @@ void HandlePortB()
 void main()
 {
     InitBoard();
-    InitTimers();
-    InitInterrupts();
+    //InitTimers();
+    //InitInterrupts();
 
     while (1) 
     {
