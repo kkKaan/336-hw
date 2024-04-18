@@ -138,6 +138,8 @@ void HandlePortB();
 
 void InitBoard()
 {
+    ADCON1 = 0x0F;
+
     // 0, 1, 2, 3rd bits are inputs
     LATA &= 0b00001111;
     TRISA = 0b00001111;
@@ -150,8 +152,8 @@ void InitBoard()
 
     // Write to LAT, read from PORT
     LATC = 0x00;
-    LATB = 0x00;
     LATD = 0x00;
+    LATE = 0x00;
     LATF = 0x00;
 
     // All outputs
@@ -164,7 +166,7 @@ void InitBoard()
     {
         for (char j = 0; j < 4; j++)
         {
-            SetBoard(j, i, 1);
+            SetBoard(j, i, 0);
         }
     }
 
