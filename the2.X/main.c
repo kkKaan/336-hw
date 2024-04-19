@@ -121,6 +121,7 @@ void GetQuartet(char x, char y, Shape *shape);
 void SetQuartet(char x, char y, Shape *shape);
 void ExtractBoard(char x, char y, Shape *shape);
 char IsColliding(bit dir0, bit dir1);
+void Move(bit dir0, bit dir1);
 void RotateShape(Shape *shape);
 
 void HandleTimer();
@@ -274,7 +275,7 @@ void ListenPortA()
             // TODO: Check CheckCollision
             if(!IsColliding(1, 0))
             {
-                curTet.x++;
+                Move(1, 0);
             }
         }
     }
@@ -283,9 +284,9 @@ void ListenPortA()
     {
         if (currentPortA & (1 << 1))
         {
-            if(!IsColliding(0, 1))
+            if(!IsColliding(1, 1))
             {
-                curTet.y--;
+                Move(1, 1);
             }
         }
     }
@@ -294,9 +295,9 @@ void ListenPortA()
     {
         if (currentPortA & (1 << 2))
         {
-            if(!IsColliding(1, 1))
+            if(!IsColliding(0, 1))
             {
-                curTet.y++;
+                Move(0, 1);
             }
         }
     }
@@ -307,7 +308,7 @@ void ListenPortA()
         {
             if(!IsColliding(0, 0))
             {
-                curTet.x--;
+                Move(0, 0);
             }
         }
     }
@@ -342,10 +343,10 @@ char BitwiseAnd(Shape shape1, Shape shape2)
 //From board
 void GetQuartet(char x, char y, Shape *shape)
 {
-    shape->b0 = GetBoard(x, y);
-    shape->b1 = GetBoard(x + 1, y);
-    shape->b2 = GetBoard(x + 1, y + 1);
-    shape->b3 = GetBoard(x, y + 1);
+    shape->b0 = IS_OUTSIDE(x, y) ? 1 : GetBoard(x, y);
+    shape->b1 = IS_OUTSIDE(x + 1, y) ? 1 : GetBoard(x + 1, y);
+    shape->b2 = IS_OUTSIDE(x + 1, y + 1) ? 1 : GetBoard(x + 1, y + 1);
+    shape->b3 = IS_OUTSIDE(x, y + 1) ? 1 : GetBoard(x, y + 1);
 }
 
 //Set board
@@ -365,25 +366,38 @@ void SetQuartet(char x, char y, Shape *shape)
  */
 char IsColliding(bit dir0, bit dir1)
 {
-    Shape shape;
-
-    SetBoard(curTet.x, curTet.y, curTet.shape.b0 ^ GetBoard(curTet.x, curTet.y));
-    SetBoard(curTet.x + 1, curTet.y, curTet.shape.b1 ^ GetBoard(curTet.x + 1, curTet.y));
-    SetBoard(curTet.x, curTet.y + 1, curTet.shape.b2 ^ GetBoard(curTet.x, curTet.y + 1));
-    SetBoard(curTet.x + 1, curTet.y + 1, curTet.shape.b3 ^ GetBoard(curTet.x + 1, curTet.y + 1));
+    Shape shape, curQuartet;
+    
+    GetQuartet(curTet.x, curTet.y, &curQuartet);
+    curQuartet.byte ^= curTet.shape.byte;
+    SetQuartet(curTet.x, curTet.y, &curQuartet);
 
     GetQuartet((dir1 == 0) ? ( dir0 == 0 ? curTet.x - 1 : curTet.x + 1) : curTet.x, 
                (dir1 == 1) ? ( dir0 == 0 ? curTet.y + 1 : curTet.y - 1) : curTet.y,
                &shape); //black magic
     
     char returnVal = BitwiseAnd(shape, curTet.shape);
-
-    SetBoard(curTet.x, curTet.y, curTet.shape.b0 ^ GetBoard(curTet.x, curTet.y));
-    SetBoard(curTet.x + 1, curTet.y, curTet.shape.b1 ^ GetBoard(curTet.x + 1, curTet.y));
-    SetBoard(curTet.x, curTet.y + 1, curTet.shape.b2 ^ GetBoard(curTet.x, curTet.y + 1));
-    SetBoard(curTet.x + 1, curTet.y + 1, curTet.shape.b3 ^ GetBoard(curTet.x + 1, curTet.y + 1));
+    
+    GetQuartet(curTet.x, curTet.y, &curQuartet);
+    curQuartet.byte ^= curTet.shape.byte;
+    SetQuartet(curTet.x, curTet.y, &curQuartet);
 
     return returnVal;
+}
+
+void Move(bit dir0, bit dir1)
+{
+    Shape curQuartet;
+    GetQuartet(curTet.x, curTet.y, &curQuartet);
+    
+    //clear current position of tetromino
+    curQuartet.byte ^= curTet.shape.byte;
+    SetQuartet(curTet.x, curTet.y, &curQuartet);
+    
+    curTet.x = (dir1 == 0) ? ( dir0 == 0 ? curTet.x - 1 : curTet.x + 1) : curTet.x;
+    curTet.y = (dir1 == 1) ? ( dir0 == 0 ? curTet.y + 1 : curTet.y - 1) : curTet.y;
+    
+    SetQuartet(curTet.x, curTet.y, &curTet.shape);
 }
 
 void RotateShape(Shape *shape)

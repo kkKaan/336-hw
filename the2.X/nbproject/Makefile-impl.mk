@@ -27,7 +27,7 @@ CLEAN_SUBPROJECTS=${CLEAN_SUBPROJECTS_${SUBPROJECTS}}
 PROJECTNAME=the2.X
 
 # Active Configuration
-DEFAULTCONF=UploadWithPickit3
+DEFAULTCONF=Simulate
 CONF=${DEFAULTCONF}
 
 # All Configurations
