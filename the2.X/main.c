@@ -110,6 +110,9 @@ char pieces;
 char lastPortA;
 char lastPortB;
 
+// 1 if displayed, 0 o.w.
+char curTetDisplayed = 1;
+
 void InitBoard();
 void InitTimers();
 void InitInterrupts();
@@ -349,11 +352,24 @@ void UpdateBuffer()
 {
     INTCONbits.TMR0IE = 0;
     buffer = board;
+
     Shape bq;
-    GetQuartet(curTet.x, curTet.y, &bq, &buffer);
-    bq.byte |= curTet.shape.byte;
-    
-    SetQuartet(curTet.x, curTet.y, &bq, &buffer);
+    if (curTetDisplayed)
+    {
+        GetQuartet(curTet.x, curTet.y, &bq, &buffer);
+        bq.byte |= curTet.shape.byte;
+        SetQuartet(curTet.x, curTet.y, &bq, &buffer);
+    }
+    else
+    {
+        Shape tempShape = curTet.shape;
+        tempShape.byte = ~tempShape.byte;
+        tempShape.byte &= 0xF0;
+        GetQuartet(curTet.x, curTet.y, &bq, &buffer);
+        bq.byte &= tempShape.byte;
+        SetQuartet(curTet.x, curTet.y, &bq, &buffer);
+    }
+
     INTCONbits.TMR0IE = 1;
 }
 
@@ -443,7 +459,12 @@ void Submit()
 {
     if (IsSubmitable())
     {
-        UpdateBuffer();
+        buffer = board; 
+        Shape bq;
+        GetQuartet(curTet.x, curTet.y, &bq, &buffer);
+        bq.byte |= curTet.shape.byte;
+        SetQuartet(curTet.x, curTet.y, &bq, &buffer);
+
         board = buffer;
         pieces++;
         
@@ -522,6 +543,8 @@ void HandleTimer()
         }
         counter = 0;
     }
+    
+    curTetDisplayed ^= 0x01;
 }
 
 void HandlePortB()
@@ -530,7 +553,7 @@ void HandlePortB()
     char changedBits = currentPortB ^ lastPortB; // Determine which bits have changed
 
     // Specifically check for changes in bits 5 and 6
-    if (changedBits & (1 << 5)) // Check if RB5 has changed
+    if (changedBits & (1 << 5)) // RB5 = rotate
     {
         if (currentPortB & (1 << 5))
         {
@@ -542,7 +565,7 @@ void HandlePortB()
         }
     }
 
-    if (changedBits & (1 << 6)) // Check if RB6 has changed
+    if (changedBits & (1 << 6)) // RB6 = submit
     {
         if (currentPortB & (1 << 6))
         {
