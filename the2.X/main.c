@@ -52,11 +52,15 @@
 #define IS_OUTSIDE(x, y) (x < 0 || x > 3 || y > 7 || y < 0)
 
 // TODO: Change to appropriate values
-#define T_PRESCALER    0x07
-#define T_PRELOAD_HIGH 0x34
-#define T_PRELOAD_LOW  0xC1
+#define T_PRESCALER    0x05
+#define T_PRELOAD_HIGH 0x67
+#define T_PRELOAD_LOW  0x69
 
-#define bit _Bool
+#define bit char
+
+#define DOT_PIECE 0
+#define SQUARE_PIECE 1
+#define L_PIECE 2
 
 typedef union
 {
@@ -64,15 +68,15 @@ typedef union
     
     struct
     {
-        unsigned int r0: 1;
+        unsigned int r0: 1; //least significant bit
         unsigned int r1: 1;
         unsigned int r2: 1;
         unsigned int r3: 1;
         
         unsigned int b3: 1;
         unsigned int b2: 1;
-        unsigned int b1: 1;
-        unsigned int b0: 1;
+        unsigned int b1: 1; 
+        unsigned int b0: 1; //most significant bit
     };
 } Shape;
 
@@ -91,9 +95,9 @@ typedef struct
     Shape shape;
 } Tetromino;
 
-static const Tetromino DOT_PIECE    = {.x = 0, .y = 0, .shape = { .byte = 0x80 }};
-static const Tetromino SQUARE_PIECE = {.x = 0, .y = 0, .shape = { .byte = 0xF0 }};
-static const Tetromino L_PIECE      = {.x = 0, .y = 0, .shape = { .byte = 0xE0 }};
+static const Tetromino DOT    = {.type = DOT_PIECE, .x = 0, .y = 0, .shape = { .byte = 0x80 }};
+static const Tetromino SQUARE = {.type = SQUARE_PIECE, .x = 0, .y = 0, .shape = { .byte = 0xF0 }};
+static const Tetromino L      = {.type = L_PIECE, .x = 0, .y = 0, .shape = { .byte = 0xE0 }};
 
 char prevA;
 
@@ -174,7 +178,7 @@ void InitBoard()
     }
 
     //SetBoard(2, 3, 1);
-    curTet = L_PIECE;
+    curTet = L;
     RotateShape(&curTet.shape);
 }
 
@@ -317,27 +321,22 @@ void ListenPortA()
     lastPortA = currentPortA;
 }
 
+/*
+ * Bitwise ORed, since if board value is 1 and 
+ * tetromino's value is 0 at the same position, it should not set board to 0
+ */
 void UpdateBoard()
 {
-    /*
-     * Bitwise ORed, since if board value is 1 and 
-     * tetromino's value is 0 at the same position, it should not set board to 0
-     */
-    
     Shape bq;
     GetQuartet(curTet.x, curTet.y, &bq);
     bq.byte |= curTet.shape.byte;
     SetQuartet(curTet.x, curTet.y, &bq);
 }
 
+//returns true if at least one bit is overlapping
 char BitwiseAnd(Shape shape1, Shape shape2)
 {
-    if (shape1.b0 && shape2.b0) return 1;
-    if (shape1.b1 && shape2.b1) return 1;
-    if (shape1.b2 && shape2.b2) return 1;
-    if (shape1.b3 && shape2.b3) return 1;
-    
-    return 0;
+    return ((shape1.byte & shape2.byte) > 0);
 }
 
 //From board
@@ -379,7 +378,7 @@ char IsColliding(bit dir0, bit dir1)
     char returnVal = BitwiseAnd(shape, curTet.shape);
     
     GetQuartet(curTet.x, curTet.y, &curQuartet);
-    curQuartet.byte ^= curTet.shape.byte;
+    curQuartet.byte |= curTet.shape.byte;
     SetQuartet(curTet.x, curTet.y, &curQuartet);
 
     return returnVal;
@@ -418,6 +417,9 @@ void HandleInterrupt()
     {
         HandleTimer();
         INTCONbits.TMR0IF = 0; // Clear TMR0 interrupt flag
+        
+        TMR0H = T_PRELOAD_HIGH; // Reset the value
+        TMR0L = T_PRELOAD_LOW;
     }
     else if (INTCONbits.RBIF)
     {
@@ -428,7 +430,13 @@ void HandleInterrupt()
 
 void HandleTimer()
 {
-    // TODO: timer
+    static char counter = 0;
+    
+    if (++counter == 8)
+    {
+        Move(0, 1);
+        counter = 0;
+    }
 }
 
 void HandlePortB()
@@ -442,7 +450,10 @@ void HandlePortB()
         if (currentPortB & (1 << 5))
         {
             // TODO: Only rotate for L-piece
-            RotateShape(&curTet.shape);
+            if (curTet.type == L_PIECE)
+            {
+                RotateShape(&curTet.shape);
+            }
         }
     }
 
@@ -463,8 +474,8 @@ void HandlePortB()
 void main()
 {
     InitBoard();
-    //InitTimers();
-    //InitInterrupts();
+    InitTimers();
+    InitInterrupts();
 
     while (1) 
     {
