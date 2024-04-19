@@ -105,6 +105,8 @@ Tetromino curTet;
 Board board;
 Board buffer;
 
+char pieces;
+
 char lastPortA;
 char lastPortB;
 
@@ -131,6 +133,7 @@ char IsColliding(bit dir0, bit dir1);
 // void Move(bit dir0, bit dir1);
 void RotateShape(Shape *shape);
 char ShapeInBounds(bit dir0, bit dir1);
+void Submit();
 
 void HandleTimer();
 void HandlePortB();
@@ -414,6 +417,15 @@ char IsColliding(bit dir0, bit dir1)
     return returnVal;
 }
 
+char IsSubmitable()
+{
+    Shape shape;
+
+    GetQuartet(curTet.x, curTet.y, &shape, &board); //black magic
+    
+    return !BitwiseAnd(shape, curTet.shape);
+}
+
 char ShapeInBounds(bit dir0, bit dir1)
 {
     Shape shape;
@@ -425,6 +437,30 @@ char ShapeInBounds(bit dir0, bit dir1)
     char returnVal = BitwiseAnd(shape, curTet.shape);
 
     return !returnVal;
+}
+
+void Submit()
+{
+    if (IsSubmitable())
+    {
+        UpdateBuffer();
+        board = buffer;
+        pieces++;
+        
+        switch (curTet.type)
+        {
+            case DOT_PIECE:
+                curTet = SQUARE;
+                break;
+            case SQUARE_PIECE:
+                curTet = L;
+                break;
+            case L_PIECE:
+                curTet = DOT;
+                break;
+        }
+    }
+    
 }
 
 /*
@@ -510,7 +546,7 @@ void HandlePortB()
     {
         if (currentPortB & (1 << 6))
         {
-            // TODO: Submit();
+            Submit();
         }
     }
 
