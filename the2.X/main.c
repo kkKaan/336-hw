@@ -95,18 +95,32 @@ typedef struct
     Shape shape;
 } Tetromino;
 
+// Lookup table for the 7-segment display (0-9, common cathode)
+const char segmentLookup[10] = {
+    0x3F, // 0
+    0x06, // 1
+    0x5B, // 2
+    0x4F, // 3
+    0x66, // 4
+    0x6D, // 5
+    0x7D, // 6
+    0x07, // 7
+    0x7F, // 8
+    0x6F  // 9
+};
+
 static const Tetromino DOT    = {.type = DOT_PIECE, .x = 0, .y = 0, .shape = { .byte = 0x80 }};
 static const Tetromino SQUARE = {.type = SQUARE_PIECE, .x = 0, .y = 0, .shape = { .byte = 0xF0 }};
 static const Tetromino L      = {.type = L_PIECE, .x = 0, .y = 0, .shape = { .byte = 0xE0 }};
-
-char prevA;
 
 Tetromino curTet;
 Board board;
 Board buffer;
 
-char pieces;
+char pieces = 0;
+char counter = 0;
 
+char prevA;
 char lastPortA;
 char lastPortB;
 
@@ -141,6 +155,8 @@ void Submit();
 void HandleTimer();
 void HandlePortB();
 
+void DisplayOn7Segment(const char num);
+
 // ============================ //
 //          GLOBALS             //
 // ============================ //
@@ -156,15 +172,15 @@ void InitBoard()
     ADCON1 = 0x0F;
 
     // 0, 1, 2, 3rd bits are inputs
-    PORTA = 0x00;
-    LATA = 0x00;
-    TRISA = 0b00001111;
-    lastPortA = PORTA;
+    PORTG = 0x00;
+    LATG = 0x00;
+    TRISG = 0b00011101;
+    lastPortA = PORTG;
 
     // 5, 6th bits are inputs
     PORTB = 0x00;
     LATB = 0x00;
-    TRISB = 0b01100000;
+    TRISB = 0b10010000;
     lastPortB = PORTB;
 
     // Write to LAT, read from PORT
@@ -178,6 +194,8 @@ void InitBoard()
     TRISD = 0x00;
     TRISE = 0x00;
     TRISF = 0x00;
+    TRISJ = 0x00;
+    TRISH = 0x00;
 
     for (char i = 0; i < 8; i++)
     {
@@ -187,9 +205,9 @@ void InitBoard()
         }
     }
 
-    //SetBoard(2, 3, 1);
-    curTet = L;
-    RotateShape(&curTet.shape);
+    // SetBoard(2, 3, 1);
+    curTet = DOT;
+    // RotateShape(&curTet.shape);
 }
 
 void InitTimers()
@@ -207,16 +225,20 @@ void InitInterrupts()
 {
     // TODO: Check the current state of RBIF in INTCON
 
-    INTCON &= 0b00000111;  // Clear all flags except flags
+    INTCON = 0x00;  // Clear all flags
 
     RCONbits.IPEN = 0;     // Disable interrupt priorities
 
-    INTCONbits.GIE    = 1; // Enable global interrupts
     INTCONbits.PEIE   = 0; // Disable peripheral interrupts
     INTCONbits.TMR0IE = 1; // Enable TMR0 interrupts
     INTCONbits.RBIE   = 1; // Enable RB Port interrupts
-
-    TRISB = 0b01100000;    // PORTB5 and PORTB6 as inputs
+    
+    INTCON2bits.TMR0IP = 1;
+    INTCON2bits.RBIP = 1;
+    
+    INTCONbits.INT0IE = 1;
+    
+    INTCONbits.GIE    = 1; // Enable global interrupts
 }
 
 void Update()
@@ -278,7 +300,7 @@ char GetBoard(char x, char y, Board *board)
 void ListenPortA()
 {
     // Read the current state of Port A
-    char currentPortA = PORTA;
+    char currentPortA = PORTG;
     // Determine which bits have changed
     char changedBits = currentPortA ^ lastPortA;
 
@@ -296,9 +318,9 @@ void ListenPortA()
         }
     }
 
-    if (changedBits & (1 << 1)) // up
+    if (changedBits & (1 << 2)) // up
     {
-        if (currentPortA & (1 << 1))
+        if (currentPortA & (1 << 2))
         {
             if(ShapeInBounds(1, 1))
             {
@@ -307,9 +329,9 @@ void ListenPortA()
         }
     }
 
-    if (changedBits & (1 << 2)) // down
+    if (changedBits & (1 << 3)) // down
     {
-        if (currentPortA & (1 << 2))
+        if (currentPortA & (1 << 3))
         {
             if(ShapeInBounds(0, 1))
             {
@@ -318,9 +340,9 @@ void ListenPortA()
         }
     }
 
-    if (changedBits & (1 << 3)) // left
+    if (changedBits & (1 << 4)) // left
     {
-        if (currentPortA & (1 << 3))
+        if (currentPortA & (1 << 4))
         {
             if(ShapeInBounds(0, 0))
             {
@@ -376,7 +398,7 @@ void UpdateBuffer()
 //returns true if at least one bit is overlapping
 char BitwiseAnd(Shape shape1, Shape shape2)
 {
-    return ((shape1.byte & shape2.byte) > 0);
+    return ((shape1.byte & shape2.byte) != 0);
 }
 
 //From board
@@ -445,14 +467,12 @@ char IsSubmitable()
 char ShapeInBounds(bit dir0, bit dir1)
 {
     Shape shape;
-    
+
     GetQuartet2((dir1 == 0) ? ( dir0 == 0 ? curTet.x - 1 : curTet.x + 1) : curTet.x, 
                (dir1 == 1) ? ( dir0 == 0 ? curTet.y + 1 : curTet.y - 1) : curTet.y,
                &shape); //black magic
-    
-    char returnVal = BitwiseAnd(shape, curTet.shape);
 
-    return !returnVal;
+    return !BitwiseAnd(shape, curTet.shape);
 }
 
 void Submit()
@@ -480,6 +500,9 @@ void Submit()
                 curTet = DOT;
                 break;
         }
+        counter = 0;
+        curTetDisplayed = 0x01;
+        DisplayOn7Segment(pieces);
     }
     
 }
@@ -526,15 +549,17 @@ void HandleInterrupt()
     }
     else if (INTCONbits.RBIF)
     {
-        INTCONbits.RBIF = 0; // Clear RB port interrupt flag
         HandlePortB();
+        INTCONbits.RBIF = 0; // Clear RB port interrupt flag
+    }
+    else if (INTCONbits.INT0IF)
+    {
+        INTCONbits.INT0IF = 0;
     }
 }
 
 void HandleTimer()
-{
-    static char counter = 0;
-    
+{   
     if (++counter == 8)
     {
         if(ShapeInBounds(0, 1))
@@ -553,11 +578,10 @@ void HandlePortB()
     char changedBits = currentPortB ^ lastPortB; // Determine which bits have changed
 
     // Specifically check for changes in bits 5 and 6
-    if (changedBits & (1 << 5)) // RB5 = rotate
+    if (changedBits & (1 << 4)) // RB5 = rotate
     {
-        if (currentPortB & (1 << 5))
+        if (currentPortB & (1 << 4))
         {
-            // TODO: Only rotate for L-piece
             if (curTet.type == L_PIECE)
             {
                 RotateShape(&curTet.shape);
@@ -565,15 +589,51 @@ void HandlePortB()
         }
     }
 
-    if (changedBits & (1 << 6)) // RB6 = submit
+    if (changedBits & (1 << 7)) // RB6 = submit
     {
-        if (currentPortB & (1 << 6))
+        if (currentPortB & (1 << 7))
         {
             Submit();
         }
     }
 
     lastPortB = currentPortB; // Update last known state of Port B
+}
+
+void DisplayOn7Segment(const char num)
+{
+    char onesDigit;
+    char tensDigit;
+
+    onesDigit = num % 10;
+    tensDigit = num / 10;
+
+    // PORTH3 is connected to D0 on the 7-segment display
+    // D0 is the rightmost 7-segment display. (Please check your board. This representation assumes I-O boards of the boards towards up)
+
+    // Given these ports above, any data in PORTJ will be sent to 7-segment displays where their
+    // enable bit is one. For example, if only D0’s bit is enabled (PORTH3 is one), only D0 will
+    // receive the PORTJ’s value.  
+
+    // Display the ones digit
+    PORTJ = segmentLookup[onesDigit];
+
+    // Enable the rightmost 7-segment display
+    PORTH = 0x08;
+    __delay_ms(1);
+
+    // Disable all 7-segment displays
+    PORTH = 0x00;
+
+    // Display the tens digit
+    PORTJ = segmentLookup[tensDigit];
+
+    // Enable the leftmost 7-segment display
+    PORTH = 0x04;
+    __delay_ms(1);
+
+    // Disable all 7-segment displays
+    // PORTH = 0x00;  
 }
 
 // ============================ //

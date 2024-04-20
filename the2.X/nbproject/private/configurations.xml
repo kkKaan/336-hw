@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configurationDescriptor version="65">
   <projectmakefile>Makefile</projectmakefile>
-  <defaultConf>0</defaultConf>
+  <defaultConf>2</defaultConf>
   <confs>
     <conf name="Simulate" type="2">
       <platformToolSN></platformToolSN>
@@ -40,7 +40,7 @@
       </runprofile>
     </conf>
     <conf name="UploadWithPickit3" type="2">
-      <platformToolSN>noToolString</platformToolSN>
+      <platformToolSN>:=MPLABComm-USB-Microchip:=&lt;vid>04D8:=&lt;pid>900A:=&lt;rev>0002:=&lt;man>Microchip Technology Inc.:=&lt;prod>PICkit 3:=&lt;sn>BUR133654584:=&lt;drv>x:=&lt;xpt>h:=end</platformToolSN>
       <languageToolchainDir>/opt/microchip/xc8/v2.30/bin</languageToolchainDir>
       <mdbdebugger version="1">
         <placeholder1>place holder 1</placeholder1>
