@@ -180,7 +180,7 @@ void InitBoard()
     // 5, 6th bits are inputs
     PORTB = 0x00;
     LATB = 0x00;
-    TRISB = 0b10010000;
+    TRISB = 0b11000000;
     lastPortB = PORTB;
 
     // Write to LAT, read from PORT
@@ -208,6 +208,13 @@ void InitBoard()
     // SetBoard(2, 3, 1);
     curTet = DOT;
     // RotateShape(&curTet.shape);
+
+    // Set the initial state of 7-segment display all to 0
+    PORTJ = segmentLookup[0];
+    PORTH = 0x0F;
+
+    // wait for 1 second
+    __delay_ms(1000);
 }
 
 void InitTimers()
@@ -487,17 +494,20 @@ void Submit()
         SetQuartet(curTet.x, curTet.y, &bq, &buffer);
 
         board = buffer;
-        pieces++;
+        
         
         switch (curTet.type)
         {
             case DOT_PIECE:
+                pieces++;
                 curTet = SQUARE;
                 break;
             case SQUARE_PIECE:
+                pieces += 4;
                 curTet = L;
                 break;
             case L_PIECE:
+                pieces += 3;
                 curTet = DOT;
                 break;
         }
@@ -579,9 +589,9 @@ void HandlePortB()
     char changedBits = currentPortB ^ lastPortB; // Determine which bits have changed
 
     // Specifically check for changes in bits 5 and 6
-    if (changedBits & (1 << 4)) // RB5 = rotate
+    if (changedBits & (1 << 6)) // RB5 = rotate
     {
-        if (currentPortB & (1 << 4))
+        if (currentPortB & (1 << 6))
         {
             if (curTet.type == L_PIECE)
             {
@@ -630,8 +640,13 @@ void DisplayOn7Segment(const char num)
     PORTH = 0x04;
     __delay_ms(1);
 
-    // Disable all 7-segment displays
-    // PORTH = 0x00;  
+    PORTJ = segmentLookup[0];
+
+    PORTH = 0x02;
+    __delay_ms(1);
+
+    PORTH = 0x01;
+    __delay_ms(1);
 }
 
 // ============================ //
