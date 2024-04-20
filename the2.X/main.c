@@ -254,6 +254,7 @@ void Render()
     LATD = buffer.col1;
     LATE = buffer.col2;
     LATF = buffer.col3;
+    DisplayOn7Segment(pieces);
 }
 
 void SetBoard(char x, char y, char v, Board* board)
@@ -502,7 +503,6 @@ void Submit()
         }
         counter = 0;
         curTetDisplayed = 0x01;
-        DisplayOn7Segment(pieces);
     }
     
 }
@@ -574,6 +574,7 @@ void HandleTimer()
 
 void HandlePortB()
 {
+    __delay_ms(2);
     char currentPortB = PORTB; // Read the current state of Port B
     char changedBits = currentPortB ^ lastPortB; // Determine which bits have changed
 
@@ -621,9 +622,6 @@ void DisplayOn7Segment(const char num)
     // Enable the rightmost 7-segment display
     PORTH = 0x08;
     __delay_ms(1);
-
-    // Disable all 7-segment displays
-    PORTH = 0x00;
 
     // Display the tens digit
     PORTJ = segmentLookup[tensDigit];
