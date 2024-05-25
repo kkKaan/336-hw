@@ -1,83 +1,3 @@
-/*
- * File:   serialio.c
- * Author: saranli
- * 
- * This file implements a simple serial IO example, which accepts message 
- * packets containing postfix expressions from the serial input with 
- * integers and arithmetic operators and outputs results from the serial output.
- * It illustrates proper buffering and processing principles.
- * 
- * Using this program with the simulator requires the following settings 
- * (Project Properties -> Simulator)
- * - (Oscillator options) Set the instruction frequency to 10MHz
- * - (UART1 IO Options) Enable, output to either window or file
- * 
- * Then, in Stimulus->Register Injection, you need to setup injection into 
- * the RCREG1 register with the following setup:
- * - Reg/Var: RCREG1
- * - Trigger: Message
- * - Data filename: calcinput.txt (or your own filename)
- * - Wrap: No (Yes if you want to continually process the same input)
- * - Format: Pkt
- * 
- * I would also recommend adding RB0,1,2,3,4,5 to the I/O pins monitor since 
- * these are used to signal various errors within the program
- * 
- * Input packet format:
- *  Our convention is such that packets start with 0x00 and end with 0xFF. 
- * In between, packets are expected to contain strings with the following
- * format:
- *    "C <infix expression>"
- * 
- * Infix expressions are a convenient and unambiguous way of writing 
- * arithmetic expressions, wherein operands appear first and operators 
- * afterwards. So, the arithmetic expression
- *  (((1+2)-3)*(4+5))/6
- * would be written as
- *   1 2 + 3 - 4 5 + * 6 /
- * 
- * Infix expressions are best understood and implemented with a stack data
- * structure. When a number is encountered, it is pushed onto the stack. When
- * an operator is encountered, two operands are popped from the stack, the
- * result computed and pushed onto the stack.
- * 
- * This implementation only supports positive integer literals as operands
- * to simplify parsing, but that's not a problem since negative numbers can 
- * always be expressed as "0 13 -", which will yield -13 on the stack.
- * 
- * Variables:
- *  Within an infix expression, if a token in the form "Sx" is encountered,
- * this defines a variable with the name 'x', and the value popped from
- * the top of the stack. 'x' can later be used instead of a number,
- * which is then searched in the database of previously defined variables
- * and pushed onto the stack. This allows saving and reuse of previous 
- * results from the computation. For example, the arithmetic expression
- * ((1+3)*5)^3 can be implemented with the following expression (despite 
- * the absence of support for the exponent operator) as
- * "1 3 + 5 * Sx x x * x *"
- * 
- * Throughout execution, various PORTB pins are used to signal errors
- * RB0 : Input/Output buffer overflow
- * RB1 : Input/Output buffer underflow
- * RB2 : Packet format error
- * RB3 : Syntax error
- * RB4 : Stack error (underflow or overflow)
- * RB5 : Variable error. Invalid name or undefined variable
- * 
- * For reference, here is the BNF grammar for the supported infix expressions
- * 
- * <calc>       -> <calc_cmd> <infix_expr>
- * <calc_cmd>   -> 'C' | 'c'
- * <infix_expr> -> <infix_term> <infix_expr> 
- * <infix_term> -> <posint>         # Positive integer literals
- *                  | <varname>     # Single letter lowercase variables names
- *                  | <operator>   
- * <operator>   -> '+' | '-' | '*' | '/' # Arithmetic operators  
- *                  | ('S' <varname>)    # S and <varname> are concatenated
- * 
- * Created on May 15, 2022, 3:16 PM
- */
-
 
 #include <xc.h>
 #include <stdint.h>
@@ -133,7 +53,7 @@ void buf_push( uint8_t v, buf_t buf) {
 uint8_t buf_pop( buf_t buf ) {
     uint8_t v;
     if (buf_isempty(buf)) { 
-        error_underflow(); return 0; 
+        error_underflow(); return 0;
     } else {
         if (buf == INBUF) v = inbuf[tail[buf]];
         else v = outbuf[tail[buf]];
@@ -159,6 +79,7 @@ void transmit_isr() {
 void __interrupt(high_priority) highPriorityISR(void) {
     if (PIR1bits.RC1IF) receive_isr();
     if (PIR1bits.TX1IF) transmit_isr();
+    // TODO: add timer
 }
 void __interrupt(low_priority) lowPriorityISR(void) {}
 
@@ -171,8 +92,6 @@ void init_ports() {
     TRISC = 0xBF;
 }
 
-// Choose SPBRG from Table 20.3
-#define SPBRG_VAL (42)
 void init_serial() {
     // We will configure EUSART1 for 57600 baud
     // SYNC = 0, BRGH = 0, BRG16 = 1. Simulator does not seem to work 
@@ -188,7 +107,7 @@ void init_serial() {
     BAUDCON1bits.BRG16 = 0;
     
     SPBRGH1 = 0x00;
-    SPBRG1 = 0x15;
+    SPBRG1 = 0x15; // 21
 }
 
 void init_interrupts() {
@@ -200,18 +119,109 @@ void init_interrupts() {
 void start_system() { INTCONbits.GIE = 1; }
 
 /* **** Packet task **** */
-#define PKT_MAX_SIZE 128 // Maximum packet size. Syntax errors can be large!
-#define PKT_HEADER 0x00  // Marker for start-of-packet
-#define PKT_END 0xff     // Marker for end-of-packet
+#define PKT_HEADER '$'  // Marker for start-of-packet
+#define PKT_END '#'    // Marker for end-of-packet
 
 // State machine states for packet reception. 
-typedef enum {PKT_WAIT_HDR, PKT_GET_BODY, PKT_WAIT_ACK} pkt_state_t;
-pkt_state_t pkt_state = PKT_WAIT_HDR;
-uint8_t pkt_body[PKT_MAX_SIZE]; // Packet data
+typedef enum {PKT_WAIT_HEADER, PKT_GET_BODY, PKT_WAIT_ACK} pkt_state_t;
+pkt_state_t pkt_state = PKT_WAIT_HEADER;
+
 uint8_t pkt_bodysize;           // Size of the current packet
 // Set to 1 when packet has been received. Must be set to 0 once packet is processed
 uint8_t pkt_valid = 0;
 uint8_t pkt_id = 0; // Incremented for every valid packet reception
+
+typedef enum {
+    GOO, // go defined before, use goo
+    END,
+    SPEED,
+    ALTITUDE,
+    MANUAL,
+    LED,
+    DISTANCE,
+    PRESS,
+    UNDEFINED
+} command_type_t;
+
+typedef struct {
+    command_type_t type;
+    int value;
+} command_t;
+
+command_t curr_cmd;
+
+uint8_t cmd_data[3] = {0};
+uint8_t val_data[5] = {0};
+uint8_t cmd_val_len = 4;
+
+// returns 1 if equal, 0 otherwise
+// compares first three characters only, no bounds check
+int string_compare_3(const uint8_t* a, const uint8_t* b)
+{
+    for (int i = 0; i < 3; ++i)
+    {
+        if (a[i] != b[i])
+        {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+int cmd_len(const uint8_t* cmd_data, command_t* curr_cmd) {
+    if (string_compare_3(cmd_data, "GOO")) {
+        curr_cmd->type = GOO;
+        return 4;
+    }
+    else if (string_compare_3(cmd_data, "END")) {
+        curr_cmd->type = END;
+        return 0;
+    }
+    else if (string_compare_3(cmd_data, "SPD")) {
+        curr_cmd->type = SPEED;
+        return 4;
+    }
+    else if (string_compare_3(cmd_data, "ALT")) {
+        curr_cmd->type = ALTITUDE;
+        return 4;
+    }
+    else if (string_compare_3(cmd_data, "MAN")) {
+        curr_cmd->type = MANUAL;
+        return 2;
+    }
+    else if (string_compare_3(cmd_data, "LED")) {
+        curr_cmd->type = LED;
+        return 2;
+    }
+    else {
+        curr_cmd->type = UNDEFINED;
+        return -1;
+    }
+}
+
+void process_cmd(const command_t* curr_cmd) {
+    switch(curr_cmd->type) {
+        case GOO:
+            // write command for go
+            break;
+        case END:
+            break;
+        case SPEED:
+            break;
+        case ALTITUDE:
+            break;
+        case MANUAL:
+            break;
+        case LED:
+            break;
+        default:
+            break;
+    }
+}
+
+void write_to_output(const command_t* cmd) {
+    return;
+}
 
 /* The packet task is responsible from monitoring the input buffer, identify
  * the start marker 0x00, and retrieve all subsequent bytes until the end marker
@@ -222,10 +232,55 @@ void packet_task() {
     // Wait until new bytes arrive
     if (!buf_isempty(INBUF)) {
         uint8_t v;
-        
-        v = buf_pop(INBUF);
-        printf("%c ", v);
-       
+
+        switch(pkt_state) {
+
+        // wait for $
+        case PKT_WAIT_HEADER:
+            v = buf_pop(INBUF);
+            if (v == PKT_HEADER) {
+                // Packet header is encountered, retrieve the rest of the packet
+                pkt_state = PKT_GET_BODY;
+                pkt_bodysize = 0;
+            }
+            break;
+        case PKT_GET_BODY:
+            v = buf_pop(INBUF);
+            if (v == PKT_END) {
+                if (pkt_bodysize != 3 + cmd_val_len) {
+                    error_packet();
+                    pkt_bodysize = 0;
+                    pkt_state = PKT_WAIT_HEADER;
+                }
+                pkt_state = PKT_WAIT_ACK;
+                pkt_valid = 1;
+            } else if (v == PKT_HEADER) {
+                // Unexpected packet start. Abort current packet and restart
+                error_packet();
+                pkt_bodysize = 0;
+            } else {
+                // TODO: refactor
+                if (pkt_bodysize < 3) {
+                    cmd_data[pkt_bodysize] = v;
+                } else if (pkt_bodysize == 3) {
+                    cmd_val_len = cmd_len(cmd_data, &curr_cmd);
+                    val_data[0] = v;
+                } else if (pkt_bodysize < 3 + cmd_val_len) {
+                    val_data[pkt_bodysize - 3] = v;
+                } else {
+                    // error
+                }
+                pkt_bodysize++;
+            }
+
+            break;
+        case PKT_WAIT_ACK:
+            sprintf(val_data, "%04x", &curr_cmd.value);
+            process_cmd(&curr_cmd);
+            pkt_state = PKT_WAIT_HEADER;
+            pkt_id++;
+            break;
+        }
     }
     enable_rxtx();
 }
@@ -236,6 +291,7 @@ void packet_task() {
  * They are essential for parsing packet contents, which consist of an initial
  * command character, followed by whitespace-separated (positive) integers and
  * arithmetic operators. */
+/*
 uint8_t tk_start; // Start index for the token
 uint8_t tk_size;  // Size of the token (0 if no token found)
 
@@ -256,10 +312,12 @@ void tk_next() {
     while (pkt_body[tk_start+tk_size]!=' ' 
             && tk_start+tk_size<pkt_bodysize) tk_size++;
 }
+*/
 
 /* ***** Serial output task **** */
 
 /* Output the current packet contents, marking the current token location */
+/*
 void output_packet( void ) {
     uint8_t ind = 0;
     while (ind < pkt_bodysize) {
@@ -270,58 +328,59 @@ void output_packet( void ) {
         enable_rxtx();
     }
 }
+ */
 /* Output a string to the outgoing buffer */
-void output_str( char *str ) {
-    uint8_t ind = 0;    
-    while (str[ind] != 0) {
-        disable_rxtx();
-        buf_push(str[ind++], OUTBUF);
-        enable_rxtx();
-    }
-}
+//void output_str( char *str ) {
+//    uint8_t ind = 0;    
+//    while (str[ind] != 0) {
+//        disable_rxtx();
+//        buf_push(str[ind++], OUTBUF);
+//        enable_rxtx();
+//    }
+//}
 /* Output an integer to the outgoing buffer */
-void output_int( int32_t v ) {
-    
-    if (v < 0) { 
-        disable_rxtx(); buf_push('-', OUTBUF); enable_rxtx();
-        v = -v; 
-    }
-    char vstr[16];
-    uint8_t str_ptr = 0, m;
-    if (v == 0) vstr[str_ptr++] = '0';
-    else
-        while (v != 0) {
-            vstr[str_ptr++] = (v % 10)+'0';
-            v = v / 10;
-        }
-    while (str_ptr != 0) {
-        disable_rxtx(); buf_push(vstr[--str_ptr], OUTBUF); enable_rxtx();
-    }
-}
+//void output_int( int32_t v ) {
+//    
+//    if (v < 0) { 
+//        disable_rxtx(); buf_push('-', OUTBUF); enable_rxtx();
+//        v = -v; 
+//    }
+//    char vstr[16];
+//    uint8_t str_ptr = 0, m;
+//    if (v == 0) vstr[str_ptr++] = '0';
+//    else
+//        while (v != 0) {
+//            vstr[str_ptr++] = (v % 10)+'0';
+//            v = v / 10;
+//        }
+//    while (str_ptr != 0) {
+//        disable_rxtx(); buf_push(vstr[--str_ptr], OUTBUF); enable_rxtx();
+//    }
+//}
 
-typedef enum {OUTPUT_INIT, OUTPUT_RUN} output_st_t;
-output_st_t output_st = OUTPUT_INIT;
+//typedef enum {OUTPUT_INIT, OUTPUT_RUN} output_st_t;
+//output_st_t output_st = OUTPUT_INIT;
 /* Output task function */
-void output_task() {
-    switch (output_st) {
-    case OUTPUT_INIT:
-        output_str("*** CENG 336 Serial Calculator V1 ***\n");
-        output_st = OUTPUT_RUN;
-        break;
-    case OUTPUT_RUN:
-        disable_rxtx();
-        // Check if there is any buffered output or ongoing transmission
-        if (!buf_isempty(OUTBUF)&& TXSTA1bits.TXEN == 0) { 
-            // If transmission is already ongoing, do nothing, 
-            // the ISR will send the next char. Otherwise, send the 
-            // first char and enable transmission
-            TXSTA1bits.TXEN = 1;
-            TXREG1 = buf_pop(OUTBUF);
-        }
-        enable_rxtx();
-        break;
-    }
-}
+//void output_task() {
+//    switch (output_st) {
+//    case OUTPUT_INIT:
+//        output_str("*** CENG 336 Serial Calculator V1 ***\n");
+//        output_st = OUTPUT_RUN;
+//        break;
+//    case OUTPUT_RUN:
+//        disable_rxtx();
+//        // Check if there is any buffered output or ongoing transmission
+//        if (!buf_isempty(OUTBUF)&& TXSTA1bits.TXEN == 0) { 
+//            // If transmission is already ongoing, do nothing, 
+//            // the ISR will send the next char. Otherwise, send the 
+//            // first char and enable transmission
+//            TXSTA1bits.TXEN = 1;
+//            TXREG1 = buf_pop(OUTBUF);
+//        }
+//        enable_rxtx();
+//        break;
+//    }
+//}
 
 
 void main(void) {
@@ -332,7 +391,7 @@ void main(void) {
     
     while(1) {
         packet_task();
-        output_task();
+        // output_task();
     }
     return;
 }
