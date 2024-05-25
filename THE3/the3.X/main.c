@@ -220,7 +220,45 @@ void process_cmd(const command_t* curr_cmd) {
 }
 
 void write_to_output(const command_t* cmd) {
-    return;
+    buf_push('$', OUTBUF);
+    int i = cmd->value;
+    char hex[5] = {0};
+    switch (cmd->type) {
+        case DISTANCE:
+        {
+            buf_push('D', OUTBUF);
+            buf_push('S', OUTBUF);
+            buf_push('T', OUTBUF);
+            sprintf(hex, "%04x", cmd->value);
+            for (int j = 0; j < 4; ++j) {
+                buf_push(hex[j], OUTBUF);
+            }
+            break;
+        }
+        case ALTITUDE:
+        {
+            buf_push('A', OUTBUF);
+            buf_push('L', OUTBUF);
+            buf_push('T', OUTBUF);
+            sprintf(hex, "%04x", cmd->value);
+            for (int j = 0; j < 4; ++j) {
+                buf_push(hex[j], OUTBUF);
+            }
+            break;
+        }
+        case PRESS:
+        {
+            buf_push('P', OUTBUF);
+            buf_push('R', OUTBUF);
+            buf_push('S', OUTBUF);
+            sprintf(hex, "%02x", cmd->value);
+            for (int j = 0; j < 2; ++j) {
+                buf_push(hex[j], OUTBUF);
+            }
+            break;
+        }
+    }
+    buf_push('#', OUTBUF);
 }
 
 /* The packet task is responsible from monitoring the input buffer, identify
@@ -275,7 +313,7 @@ void packet_task() {
 
             break;
         case PKT_WAIT_ACK:
-            sprintf(val_data, "%04x", &curr_cmd.value);
+            sscanf(val_data, "%04x", &curr_cmd.value);
             process_cmd(&curr_cmd);
             pkt_state = PKT_WAIT_HEADER;
             pkt_id++;
