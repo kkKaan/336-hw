@@ -114,7 +114,7 @@ typedef enum {INBUF = 0, OUTBUF = 1} buf_t;
 uint8_t inbuf[BUFSIZE];   /* Preallocated buffer for incoming data */
 uint8_t outbuf[BUFSIZE];  /* Preallocated buffer for outgoing data  */
 uint8_t head[2] = {0, 0}; /* head for pushing, tail for popping */
-uint8_t tail[2] = {0, 0}; 
+uint8_t tail[2] = {0, 0};
 
 /* Check if a buffer had data or not */
 #pragma interrupt_level 2 // Prevents duplication of function
@@ -181,14 +181,14 @@ void init_serial() {
     TXSTA1bits.TX9 = 0;    // No 9th bit
     TXSTA1bits.TXEN = 0;   // Transmission is disabled for the time being
     TXSTA1bits.SYNC = 0; 
-    TXSTA1bits.BRGH = 0;
+    TXSTA1bits.BRGH = 1;
     RCSTA1bits.SPEN = 1;   // Enable serial port
     RCSTA1bits.RX9 = 0;    // No 9th bit
     RCSTA1bits.CREN = 1;   // Continuous reception
-    BAUDCON1bits.BRG16 = 1;
-
-    SPBRGH1 = (SPBRG_VAL >> 8) & 0xff;
-    SPBRG1 = SPBRG_VAL & 0xff;
+    BAUDCON1bits.BRG16 = 0;
+    
+    SPBRGH1 = 0x00;
+    SPBRG1 = 0x15;
 }
 
 void init_interrupts() {
@@ -222,36 +222,10 @@ void packet_task() {
     // Wait until new bytes arrive
     if (!buf_isempty(INBUF)) {
         uint8_t v;
-        switch(pkt_state) {
-        case PKT_WAIT_HDR:
-            v = buf_pop(INBUF);
-            if (v == PKT_HEADER) {
-                // Packet header is encountered, retrieve the rest of the packet
-                pkt_state = PKT_GET_BODY;
-                pkt_bodysize = 0;
-            }
-            break;
-        case PKT_GET_BODY:
-            v = buf_pop(INBUF);
-            if (v == PKT_END) {
-                // End of packet is encountered, signal calc_task())
-                pkt_state = PKT_WAIT_ACK;
-                pkt_valid = 1;
-            } else if (v == PKT_HEADER) {
-                // Unexpected packet start. Abort current packet and restart
-                error_packet();
-                pkt_bodysize = 0;
-            } else 
-                pkt_body[pkt_bodysize++] = v;
-            break;
-        case PKT_WAIT_ACK:
-            if (pkt_valid == 0) {
-                // Packet processing seems to be finished, continue monitoring
-                pkt_state = PKT_WAIT_HDR;
-                pkt_id++;
-            }
-            break;
-        }
+        
+        v = buf_pop(INBUF);
+        printf("%c ", v);
+       
     }
     enable_rxtx();
 }
