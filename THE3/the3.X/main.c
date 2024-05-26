@@ -82,6 +82,9 @@ typedef struct {
 
 command_t cmd1 = {.type = DISTANCE, .value = 125};
 
+int remaining_distance = -1;
+int send_dst = 0;
+
 void write_to_output(const command_t* cmd);
 /* **** ISR functions **** */
 void receive_isr() {
@@ -100,8 +103,11 @@ void transmit_isr() {
 
 void handle_timer() {
     INTCONbits.TMR0IF = 0;
-    
-    write_to_output(&cmd1);
+       
+    cmd1.type = DISTANCE;
+    cmd1.value = remaining_distance;
+    if (send_dst)
+        write_to_output(&cmd1);
     
     TMR0H = 0x85;
     TMR0L = 0xEE;
@@ -238,11 +244,13 @@ int cmd_len(const uint8_t* cmd_data, command_t* curr_cmd) {
 void process_cmd(const command_t* curr_cmd) {
     switch(curr_cmd->type) {
         case GOO:
-            // write command for go
+            remaining_distance = curr_cmd->value - 10;
+            send_dst = 1;
             break;
         case END:
             break;
         case SPEED:
+            remaining_distance -= curr_cmd->value;
             break;
         case ALTITUDE:
             break;
@@ -256,7 +264,7 @@ void process_cmd(const command_t* curr_cmd) {
 }
 
 void write_to_output(const command_t* cmd) {
-    disable_rxtx();
+    //disable_rxtx();
     buf_push('$', OUTBUF);
     int i = cmd->value;
     char hex[5] = {0};
@@ -297,7 +305,7 @@ void write_to_output(const command_t* cmd) {
     }
     buf_push('#', OUTBUF);
     buf_push('#', OUTBUF); // junk char
-    enable_rxtx();
+    //enable_rxtx();
 }
 
 /* The packet task is responsible from monitoring the input buffer, identify
@@ -315,6 +323,7 @@ void packet_task() {
         // wait for $
         case PKT_WAIT_HEADER:
             v = buf_pop(INBUF);
+            enable_rxtx();
             if (v == PKT_HEADER) {
                 // Packet header is encountered, retrieve the rest of the packet
                 pkt_state = PKT_GET_BODY;
@@ -323,6 +332,7 @@ void packet_task() {
             break;
         case PKT_GET_BODY:
             v = buf_pop(INBUF);
+            enable_rxtx();
             if (v == PKT_END) {
                 if (pkt_bodysize != 3 + cmd_val_len) {
                     error_packet();
@@ -352,6 +362,7 @@ void packet_task() {
 
             break;
         case PKT_WAIT_ACK:
+            enable_rxtx();
             sscanf(val_data, "%04x", &curr_cmd.value);
             process_cmd(&curr_cmd);
             pkt_state = PKT_WAIT_HEADER;
@@ -359,7 +370,7 @@ void packet_task() {
             break;
         }
     }
-    enable_rxtx();
+    
 }
 
 /* **** Tokenizer tools **** */

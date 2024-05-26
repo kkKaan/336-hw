@@ -265,10 +265,12 @@ class CMDBuffer:
         self.reset()
 
     def append(self, byte):
+        
         if len(byte) != 1:
             logging.error(
                 f"CMDBuffer append got byte array of size {len(byte)}")
             return False
+            
         # Check if buffer is in valid state
         if self._is_command_string_built:
             logging.error(
@@ -292,6 +294,7 @@ class CMDBuffer:
             # Command string building has finished
             self._buffer += byte
             self._is_command_string_built = True
+            print("READ:", self._buffer)
             return True
         else:
             # Just a normal byte, extend
