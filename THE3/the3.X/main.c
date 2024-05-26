@@ -63,6 +63,26 @@ uint8_t buf_pop( buf_t buf ) {
     }
 }
 
+typedef enum {
+    GOO, // go defined before, use goo
+    END,
+    SPEED,
+    ALTITUDE,
+    MANUAL,
+    LED,
+    DISTANCE,
+    PRESS,
+    UNDEFINED
+} command_type_t;
+
+typedef struct {
+    command_type_t type;
+    int value;
+} command_t;
+
+command_t cmd1 = {.type = DISTANCE, .value = 125};
+
+void write_to_output(const command_t* cmd);
 /* **** ISR functions **** */
 void receive_isr() {
     PIR1bits.RC1IF = 0;      // Acknowledge interrupt
@@ -71,15 +91,26 @@ void receive_isr() {
 void transmit_isr() {
     PIR1bits.TX1IF = 0;    // Acknowledge interrupt
     // If all bytes are transmitted, turn off transmission
-    if (buf_isempty(OUTBUF)) TXSTA1bits.TXEN = 0; 
+    if (buf_isempty(OUTBUF)) {
+        TXSTA1bits.TXEN = 0;
+    }
     // Otherwise, send next byte
     else TXREG1 = buf_pop(OUTBUF);
+}
+
+void handle_timer() {
+    INTCONbits.TMR0IF = 0;
+    
+    write_to_output(&cmd1);
+    
+    TMR0H = 0x85;
+    TMR0L = 0xEE;
 }
 
 void __interrupt(high_priority) highPriorityISR(void) {
     if (PIR1bits.RC1IF) receive_isr();
     if (PIR1bits.TX1IF) transmit_isr();
-    // TODO: add timer
+    if (INTCONbits.TMR0IF) handle_timer();
 }
 void __interrupt(low_priority) lowPriorityISR(void) {}
 
@@ -114,6 +145,28 @@ void init_interrupts() {
     // Enable reception and transmission interrupts
     enable_rxtx();
     INTCONbits.PEIE = 1;
+    INTCONbits.TMR0IE = 1;
+}
+
+void init_timer() {
+    T0CON = 0x00;
+    
+    T0CONbits.TMR0ON = 1;
+    T0CONbits.T0CS = 0;
+    T0CONbits.T08BIT = 0;
+    T0CONbits.PSA = 0;
+    
+    //TODO: set scaler
+    T0CONbits.T0PS0 = 0;
+    T0CONbits.T0PS1 = 0;
+    T0CONbits.T0PS2 = 1;
+    
+    TMR0H = 0x85;
+    TMR0L = 0xEE;
+}
+
+void init_adcon() {
+    
 }
 
 void start_system() { INTCONbits.GIE = 1; }
@@ -130,23 +183,6 @@ uint8_t pkt_bodysize;           // Size of the current packet
 // Set to 1 when packet has been received. Must be set to 0 once packet is processed
 uint8_t pkt_valid = 0;
 uint8_t pkt_id = 0; // Incremented for every valid packet reception
-
-typedef enum {
-    GOO, // go defined before, use goo
-    END,
-    SPEED,
-    ALTITUDE,
-    MANUAL,
-    LED,
-    DISTANCE,
-    PRESS,
-    UNDEFINED
-} command_type_t;
-
-typedef struct {
-    command_type_t type;
-    int value;
-} command_t;
 
 command_t curr_cmd;
 
@@ -220,6 +256,7 @@ void process_cmd(const command_t* curr_cmd) {
 }
 
 void write_to_output(const command_t* cmd) {
+    disable_rxtx();
     buf_push('$', OUTBUF);
     int i = cmd->value;
     char hex[5] = {0};
@@ -229,10 +266,14 @@ void write_to_output(const command_t* cmd) {
             buf_push('D', OUTBUF);
             buf_push('S', OUTBUF);
             buf_push('T', OUTBUF);
-            sprintf(hex, "%04x", cmd->value);
-            for (int j = 0; j < 4; ++j) {
-                buf_push(hex[j], OUTBUF);
-            }
+//            sprintf(hex, "%04x", cmd->value);
+//            for (int j = 0; j < 4; ++j) {
+//                buf_push(hex[j], OUTBUF);
+//            }
+            buf_push('1', OUTBUF);
+            buf_push('1', OUTBUF);
+            buf_push('1', OUTBUF);
+            buf_push('1', OUTBUF);
             break;
         }
         case ALTITUDE:
@@ -259,6 +300,8 @@ void write_to_output(const command_t* cmd) {
         }
     }
     buf_push('#', OUTBUF);
+    buf_push('#', OUTBUF); // junk char
+    enable_rxtx();
 }
 
 /* The packet task is responsible from monitoring the input buffer, identify
@@ -396,40 +439,35 @@ void output_packet( void ) {
 //    }
 //}
 
-//typedef enum {OUTPUT_INIT, OUTPUT_RUN} output_st_t;
-//output_st_t output_st = OUTPUT_INIT;
+
+
+typedef enum {OUTPUT_INIT, OUTPUT_RUN} output_st_t;
+output_st_t output_st = OUTPUT_INIT;
 /* Output task function */
-//void output_task() {
-//    switch (output_st) {
-//    case OUTPUT_INIT:
-//        output_str("*** CENG 336 Serial Calculator V1 ***\n");
-//        output_st = OUTPUT_RUN;
-//        break;
-//    case OUTPUT_RUN:
-//        disable_rxtx();
-//        // Check if there is any buffered output or ongoing transmission
-//        if (!buf_isempty(OUTBUF)&& TXSTA1bits.TXEN == 0) { 
-//            // If transmission is already ongoing, do nothing, 
-//            // the ISR will send the next char. Otherwise, send the 
-//            // first char and enable transmission
-//            TXSTA1bits.TXEN = 1;
-//            TXREG1 = buf_pop(OUTBUF);
-//        }
-//        enable_rxtx();
-//        break;
-//    }
-//}
+void output_task() {
+    disable_rxtx();   
+    if (!buf_isempty(OUTBUF) && TXSTA1bits.TXEN == 0) {
+         // If transmission is already ongoing, do nothing, 
+         // the ISR will send the next char. Otherwise, send the 
+         // first char and enable transmission
+         TXSTA1bits.TXEN = 1;
+         TXREG1 = buf_pop(OUTBUF);
+     }
+     enable_rxtx();
+}
 
 
 void main(void) {
     init_ports();
     init_serial();
     init_interrupts();
+    init_timer();
+    init_adcon();
     start_system();
     
     while(1) {
         packet_task();
-        // output_task();
+        output_task();
     }
     return;
 }
