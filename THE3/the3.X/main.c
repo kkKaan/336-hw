@@ -266,14 +266,10 @@ void write_to_output(const command_t* cmd) {
             buf_push('D', OUTBUF);
             buf_push('S', OUTBUF);
             buf_push('T', OUTBUF);
-//            sprintf(hex, "%04x", cmd->value);
-//            for (int j = 0; j < 4; ++j) {
-//                buf_push(hex[j], OUTBUF);
-//            }
-            buf_push('1', OUTBUF);
-            buf_push('1', OUTBUF);
-            buf_push('1', OUTBUF);
-            buf_push('1', OUTBUF);
+            sprintf(hex, "%04x", cmd->value);
+            for (int j = 0; j < 4; ++j) {
+                buf_push(hex[j], OUTBUF);
+            }
             break;
         }
         case ALTITUDE:
