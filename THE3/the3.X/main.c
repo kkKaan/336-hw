@@ -272,8 +272,7 @@ void init_timer() {
 
 void init_adcon() {
     TRISH = 0x10;
-    ADCON0 = 0x00;
-    ADCON0bits.CHS = 0b1100;
+    ADCON0 = 0x31;
     
     ADCON1 = 0x00;
     ADCON2 = 0x00;
@@ -283,8 +282,8 @@ void init_adcon() {
 }
 
 void enable_adc() {
-    ADCON0bits.ADON = 1;
-    PIE1bits.ADIE = 1;
+    //ADCON0bits.ADON = 1;
+    //PIE1bits.ADIE = 1;
 }
 
 void disable_adc() {
@@ -627,6 +626,24 @@ void output_task() {
      enable_rxtx();
 }
 
+void adc_task() {
+    if (alt_period == 0) return;
+    
+    GODONE = 1;
+    while (GODONE);
+    unsigned int result = (ADRES << 8) + ADRESL;
+    
+    
+    if (result < 256) {
+        adc_val = 9000;
+    } else if (result < 512) {
+        adc_val = 10000;
+    } else if (result < 768) {
+        adc_val = 11000;
+    } else {
+        adc_val = 12000;
+    }
+}
 
 void main(void) {
     init_ports();
@@ -637,8 +654,12 @@ void main(void) {
     start_system();
     
     while(1) {
+        adc_task();
         packet_task();
         output_task();
     }
+    
+    
+    
     return;
 }
