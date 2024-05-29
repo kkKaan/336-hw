@@ -83,14 +83,21 @@ typedef struct {
 command_t cmd1 = {.type = DISTANCE, .value = 125};
 
 int remaining_distance = -1;
+int speed = 0;
 int send_dst = 0;
+int alt_period = 0;
+int adc_val = 9000;
+int timer_counter = 0;
+int manual_on = 0;
 
 void write_to_output(const command_t* cmd);
+
 /* **** ISR functions **** */
 void receive_isr() {
     PIR1bits.RC1IF = 0;      // Acknowledge interrupt
     buf_push(RCREG1, INBUF); // Buffer incoming byte
 }
+
 void transmit_isr() {
     PIR1bits.TX1IF = 0;    // Acknowledge interrupt
     // If all bytes are transmitted, turn off transmission
@@ -106,17 +113,45 @@ void handle_timer() {
        
     cmd1.type = DISTANCE;
     cmd1.value = remaining_distance;
+    
     if (send_dst)
         write_to_output(&cmd1);
     
+    if (alt_period != 0) {
+        if (timer_counter % alt_period == 0) {
+            cmd1.type = ALTITUDE;
+            cmd1.value = adc_val;
+            write_to_output(&cmd1);
+        }
+    }
+    
+    timer_counter++;
+    
     TMR0H = 0x85;
     TMR0L = 0xEE;
+}
+
+void handle_adc() {
+    PIR1bits.ADIF = 0;
+    
+    unsigned int adcResult = (ADRESH << 8) + ADRESL;
+
+    if (adcResult < 256) {
+        adc_val = 9000;
+    } else if (adcResult < 512) {
+        adc_val = 10000;
+    } else if (adcResult < 768) {
+        adc_val = 11000;
+    } else {
+        adc_val = 12000;
+    }
 }
 
 void __interrupt(high_priority) highPriorityISR(void) {
     if (PIR1bits.RC1IF) receive_isr();
     if (PIR1bits.TX1IF) transmit_isr();
     if (INTCONbits.TMR0IF) handle_timer();
+    if (PIR1bits.ADIF) handle_adc();
 }
 void __interrupt(low_priority) lowPriorityISR(void) {}
 
@@ -172,6 +207,32 @@ void init_timer() {
 }
 
 void init_adcon() {
+    TRISH = 0x10;
+    ADCON0 = 0x00;
+    ADCON0bits.CHS = 0b1100;
+    
+    ADCON1 = 0x00;
+    ADCON2 = 0x00;
+    
+    ADCON2bits.ADFM = 1;
+    ADCON2 = 0xAA;
+}
+
+void enable_adc() {
+    ADCON0bits.ADON = 1;
+    PIE1bits.ADIE = 1;
+}
+
+void disable_adc() {
+    ADCON0bits.ADON = 0;
+    PIE1bits.ADIE = 0;
+}
+
+void enable_portb() {
+    
+}
+
+void disable_portb() {
     
 }
 
@@ -244,15 +305,23 @@ int cmd_len(const uint8_t* cmd_data, command_t* curr_cmd) {
 void process_cmd(const command_t* curr_cmd) {
     switch(curr_cmd->type) {
         case GOO:
-            remaining_distance = curr_cmd->value - 10;
+            remaining_distance = curr_cmd->value - speed;
             send_dst = 1;
             break;
         case END:
             break;
         case SPEED:
-            remaining_distance -= curr_cmd->value;
+            speed = curr_cmd->value;
+            remaining_distance -= speed;
             break;
         case ALTITUDE:
+            alt_period = curr_cmd->value / 100;
+            if (alt_period != 0) {
+                enable_adc();
+            } else {
+                disable_adc();
+            }
+            timer_counter = 0;
             break;
         case MANUAL:
             break;
@@ -315,61 +384,64 @@ void write_to_output(const command_t* cmd) {
 void packet_task() {
     disable_rxtx();
     // Wait until new bytes arrive
-    if (!buf_isempty(INBUF)) {
-        uint8_t v;
 
-        switch(pkt_state) {
+    uint8_t v;
 
-        // wait for $
-        case PKT_WAIT_HEADER:
-            v = buf_pop(INBUF);
-            enable_rxtx();
-            if (v == PKT_HEADER) {
-                // Packet header is encountered, retrieve the rest of the packet
-                pkt_state = PKT_GET_BODY;
-                pkt_bodysize = 0;
-            }
-            break;
-        case PKT_GET_BODY:
-            v = buf_pop(INBUF);
-            enable_rxtx();
-            if (v == PKT_END) {
-                if (pkt_bodysize != 3 + cmd_val_len) {
-                    error_packet();
-                    pkt_bodysize = 0;
-                    pkt_state = PKT_WAIT_HEADER;
-                }
-                pkt_state = PKT_WAIT_ACK;
-                pkt_valid = 1;
-            } else if (v == PKT_HEADER) {
-                // Unexpected packet start. Abort current packet and restart
+    switch(pkt_state) {
+
+    // wait for $
+    case PKT_WAIT_HEADER:
+        if (buf_isempty(INBUF)) break;
+        v = buf_pop(INBUF);
+        enable_rxtx();
+        if (v == PKT_HEADER) {
+            // Packet header is encountered, retrieve the rest of the packet
+            pkt_state = PKT_GET_BODY;
+            pkt_bodysize = 0;
+        }
+        break;
+    case PKT_GET_BODY:
+        if (buf_isempty(INBUF)) break;
+        v = buf_pop(INBUF);
+        enable_rxtx();
+        if (v == PKT_END) {
+            if (pkt_bodysize != 3 + cmd_val_len) {
                 error_packet();
                 pkt_bodysize = 0;
-            } else {
-                // TODO: refactor
-                if (pkt_bodysize < 3) {
-                    cmd_data[pkt_bodysize] = v;
-                } else if (pkt_bodysize == 3) {
-                    cmd_val_len = cmd_len(cmd_data, &curr_cmd);
-                    val_data[0] = v;
-                } else if (pkt_bodysize < 3 + cmd_val_len) {
-                    val_data[pkt_bodysize - 3] = v;
-                } else {
-                    // error
-                }
-                pkt_bodysize++;
+                pkt_state = PKT_WAIT_HEADER;
+                break;
             }
-
-            break;
-        case PKT_WAIT_ACK:
-            enable_rxtx();
-            sscanf(val_data, "%04x", &curr_cmd.value);
-            process_cmd(&curr_cmd);
-            pkt_state = PKT_WAIT_HEADER;
-            pkt_id++;
-            break;
+            pkt_state = PKT_WAIT_ACK;
+            pkt_valid = 1;
+        } else if (v == PKT_HEADER) {
+            // Unexpected packet start. Abort current packet and restart
+            error_packet();
+            pkt_bodysize = 0;
+        } else {
+            // TODO: refactor
+            if (pkt_bodysize < 3) {
+                cmd_data[pkt_bodysize] = v;
+            } else if (pkt_bodysize == 3) {
+                cmd_val_len = cmd_len(cmd_data, &curr_cmd);
+                val_data[0] = v;
+            } else if (pkt_bodysize < 3 + cmd_val_len) {
+                val_data[pkt_bodysize - 3] = v;
+            } else {
+                // error
+            }
+            pkt_bodysize++;
         }
+
+        break;
+    case PKT_WAIT_ACK:
+        enable_rxtx();
+        sscanf(val_data, "%04x", &curr_cmd.value);
+        process_cmd(&curr_cmd);
+        pkt_state = PKT_WAIT_HEADER;
+        pkt_id++;
+        break;
     }
+
     
 }
 
