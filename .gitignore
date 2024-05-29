@@ -52,3 +52,5 @@ Mkfile.old
 dkms.conf
 /the2.X/build/
 /the2.X/dist/
+/THE3/the3.X/build/
+/THE3/the3.X/dist/

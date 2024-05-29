@@ -34,7 +34,7 @@ extern "C" {
 #pragma config  EBTR0 = OFF, EBTR1 = OFF, EBTR2 = OFF, EBTR3 = OFF, EBTR4 = OFF
 #pragma config  EBTR5 = OFF, EBTR6 = OFF, EBTR7 = OFF
 #pragma config  EBTRB = OFF
-#pragma config DEBUG = ON
+#pragma config DEBUG = OFF
 
 
 #ifdef	__cplusplus

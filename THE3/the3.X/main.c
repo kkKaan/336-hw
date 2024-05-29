@@ -63,6 +63,9 @@ uint8_t buf_pop( buf_t buf ) {
     }
 }
 
+void enable_portb();
+void disable_portb();
+
 typedef enum {
     GOO, // go defined before, use goo
     END,
@@ -89,6 +92,9 @@ int alt_period = 0;
 int adc_val = 9000;
 int timer_counter = 0;
 int manual_on = 0;
+uint8_t last_portb = 0;
+int write_prs = 0;
+int prs_led = 0;
 
 void write_to_output(const command_t* cmd);
 
@@ -125,6 +131,13 @@ void handle_timer() {
         }
     }
     
+    if (manual_on && write_prs) {
+        cmd1.type = PRESS;
+        cmd1.value = prs_led;
+        write_to_output(&cmd1);
+        write_prs = 0;
+    }
+    
     timer_counter++;
     
     TMR0H = 0x85;
@@ -147,11 +160,51 @@ void handle_adc() {
     }
 }
 
+void handle_portb() {
+    INTCONbits.RBIF = 0;
+    __delay_ms(2);
+    char current_portb = PORTB; // Read the current state of Port B
+    char changed_bits = current_portb ^ last_portb; // Determine which bits have changed
+
+    // Specifically check for changes in bits 5 and 6
+    if (changed_bits & (1 << 4)) { // RB4 
+        if (current_portb & (1 << 4)) {
+            prs_led = 4;
+            write_prs = 1;
+        }
+    }
+
+    if (changed_bits & (1 << 5)) { // RB5
+        if (current_portb & (1 << 5)) {
+            prs_led = 5;
+            write_prs = 1;
+        }
+    }
+
+    if (changed_bits & (1 << 6)) { // RB6
+        if (current_portb & (1 << 6)) {
+            prs_led = 6;
+            write_prs = 1;
+        }
+    }
+
+    if (changed_bits & (1 << 7)) { // RB7
+        if (current_portb & (1 << 7)) {
+            prs_led = 7;
+            write_prs = 1;
+        }
+    }
+
+    last_portb = current_portb; // Update last known state of Port B
+
+}
+
 void __interrupt(high_priority) highPriorityISR(void) {
     if (PIR1bits.RC1IF) receive_isr();
     if (PIR1bits.TX1IF) transmit_isr();
-    if (INTCONbits.TMR0IF) handle_timer();
     if (PIR1bits.ADIF) handle_adc();
+    if (INTCONbits.RBIF) handle_portb();
+    if (INTCONbits.TMR0IF) handle_timer();
 }
 void __interrupt(low_priority) lowPriorityISR(void) {}
 
@@ -166,6 +219,11 @@ void init_ports() {
     // TRISB = 0xC0;
     // PORTC pin 7 is input, pin 6 is output, rest is input
     TRISC = 0xB0;
+    
+    PORTA = 0;
+    PORTB = 0;
+    PORTC = 0;
+    PORTD = 0;
 }
 
 void init_serial() {
@@ -188,9 +246,11 @@ void init_serial() {
 
 void init_interrupts() {
     // Enable reception and transmission interrupts
+    INTCON = 0x00;
     enable_rxtx();
     INTCONbits.PEIE = 1;
     INTCONbits.TMR0IE = 1;
+    disable_portb();
 }
 
 void init_timer() {
@@ -233,11 +293,15 @@ void disable_adc() {
 }
 
 void enable_portb() {
-    
+    INTCONbits.RBIE = 1;
+    INTCON2bits.RBIP = 1;
+    INTCONbits.INT0IE = 1;
+    last_portb = PORTB;
 }
 
 void disable_portb() {
-    
+    INTCONbits.RBIF = 0;
+    INTCONbits.RBIE = 0;
 }
 
 void start_system() { INTCONbits.GIE = 1; }
@@ -275,51 +339,51 @@ int string_compare_3(const uint8_t* a, const uint8_t* b)
     return 1;
 }
 
-int cmd_len(const uint8_t* cmd_data, command_t* curr_cmd) {
+int cmd_len(const uint8_t* cmd_data, command_t* cmd) {
     if (string_compare_3(cmd_data, "GOO")) {
-        curr_cmd->type = GOO;
+        cmd->type = GOO;
         return 4;
     }
     else if (string_compare_3(cmd_data, "END")) {
-        curr_cmd->type = END;
+        cmd->type = END;
         return 0;
     }
     else if (string_compare_3(cmd_data, "SPD")) {
-        curr_cmd->type = SPEED;
+        cmd->type = SPEED;
         return 4;
     }
     else if (string_compare_3(cmd_data, "ALT")) {
-        curr_cmd->type = ALTITUDE;
+        cmd->type = ALTITUDE;
         return 4;
     }
     else if (string_compare_3(cmd_data, "MAN")) {
-        curr_cmd->type = MANUAL;
+        cmd->type = MANUAL;
         return 2;
     }
     else if (string_compare_3(cmd_data, "LED")) {
-        curr_cmd->type = LED;
+        cmd->type = LED;
         return 2;
     }
     else {
-        curr_cmd->type = UNDEFINED;
+        cmd->type = UNDEFINED;
         return -1;
     }
 }
 
-void process_cmd(const command_t* curr_cmd) {
-    switch(curr_cmd->type) {
+void process_cmd(const command_t* cmd) {
+    switch(cmd->type) {
         case GOO:
-            remaining_distance = curr_cmd->value - speed;
+            remaining_distance = cmd->value - speed;
             send_dst = 1;
             break;
         case END:
             break;
         case SPEED:
-            speed = curr_cmd->value;
+            speed = cmd->value;
             remaining_distance -= speed;
             break;
         case ALTITUDE:
-            alt_period = curr_cmd->value / 100;
+            alt_period = cmd->value / 100;
             if (alt_period != 0) {
                 enable_adc();
             } else {
@@ -328,8 +392,28 @@ void process_cmd(const command_t* curr_cmd) {
             timer_counter = 0;
             break;
         case MANUAL:
+            manual_on = cmd->value;
+            if (manual_on) enable_portb();
+            else disable_portb();
             break;
         case LED:
+            switch (cmd->value) {
+                case 0:
+                    PORTA = 0; PORTB = 0; PORTC = 0; PORTD = 0;
+                    break;
+                case 1:
+                    PORTD = 0x01;
+                    break;
+                case 2:
+                    PORTC = 0x01;
+                    break;
+                case 3:
+                    PORTB = 0x01;
+                    break;
+                case 4:
+                    PORTA = 0x01;
+                    break;
+            }
             break;
         default:
             break;
@@ -439,7 +523,11 @@ void packet_task() {
         break;
     case PKT_WAIT_ACK:
         enable_rxtx();
-        sscanf(val_data, "%04x", &curr_cmd.value);
+        if (cmd_val_len == 2) {
+            sscanf(val_data, "%02x", &curr_cmd.value);
+        } else if (cmd_val_len == 4) {
+            sscanf(val_data, "%04x", &curr_cmd.value);
+        }
         process_cmd(&curr_cmd);
         pkt_state = PKT_WAIT_HEADER;
         pkt_id++;
