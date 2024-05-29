@@ -89,6 +89,9 @@ int alt_period = 0;
 int adc_val = 9000;
 int timer_counter = 0;
 int manual_on = 0;
+uint8_t last_portb = 0;
+int write_prs = 0;
+int prs_led = 0;
 
 void write_to_output(const command_t* cmd);
 
@@ -125,10 +128,52 @@ void handle_timer() {
         }
     }
     
+    if (manual_on && write_prs) {
+        cmd1.type = PRESS;
+        cmd1.value = prs_led;
+        write_to_output(&cmd1);
+        write_prs = 0;
+    }
+    
     timer_counter++;
     
     TMR0H = 0x85;
     TMR0L = 0xEE;
+}
+
+void handle_portb() {
+    INTCONbits.RBIF = 0;
+    
+    __delay_ms(2);
+    char current_portb = PORTB; // Read the current state of Port B
+    char changed_bits = current_portb ^ last_portb; // Determine which bits have changed
+
+    // Specifically check for changes in bits 5 and 6
+    if (changed_bits & (1 << 4)) { // RB4 
+        if (current_portb & (1 << 4)) {
+            write_prs = 1;
+        }
+    }
+
+    if (changed_bits & (1 << 5)) { // RB5
+        if (current_portb & (1 << 5)) {
+            write_prs = 1;
+        }
+    }
+    
+    if (changed_bits & (1 << 6)) { // RB5
+        if (current_portb & (1 << 6)) {
+            write_prs = 1;
+        }
+    }
+
+    if (changed_bits & (1 << 7)) { // RB6
+        if (current_portb & (1 << 7)) {
+            write_prs = 1;
+        }
+    }
+
+    last_portb = current_portb; // Update last known state of Port B
 }
 
 void handle_adc() {
@@ -151,13 +196,25 @@ void __interrupt(high_priority) highPriorityISR(void) {
     if (PIR1bits.RC1IF) receive_isr();
     if (PIR1bits.TX1IF) transmit_isr();
     if (INTCONbits.TMR0IF) handle_timer();
-    if (PIR1bits.ADIF) handle_adc();
+    //if (PIR1bits.ADIF) handle_adc();
+    //if (INTCONbits.RBIF) handle_portb();
 }
 void __interrupt(low_priority) lowPriorityISR(void) {}
 
 /* **** Initialization functions **** */
 void init_ports() {
-     //Port B pin 0: buffer overflow, pin1: buffer underflow, pin2: syntax err
+    
+//    LATA = 0;
+//    LATB = 0;
+//    LATC = 0;
+//    LATD = 0;
+//    
+//    TRISB = 0xF0;
+//    TRISA = 0x00;
+//    TRISC = 0x00;
+//    TRISD = 0x00;
+    
+    //Port B pin 0: buffer overflow, pin1: buffer underflow, pin2: syntax err
     TRISB = 0xC0;
     PORTB = 0x00;
     // PORTC pin 7 is input, pin 6 is output, rest is input
@@ -187,6 +244,9 @@ void init_interrupts() {
     enable_rxtx();
     INTCONbits.PEIE = 1;
     INTCONbits.TMR0IE = 1;
+    //INTCONbits.RBIE = 1;
+    
+    TRISB = 0b11000000;
 }
 
 void init_timer() {
@@ -302,20 +362,20 @@ int cmd_len(const uint8_t* cmd_data, command_t* curr_cmd) {
     }
 }
 
-void process_cmd(const command_t* curr_cmd) {
-    switch(curr_cmd->type) {
+void process_cmd(const command_t* cmd) {
+    switch(cmd->type) {
         case GOO:
-            remaining_distance = curr_cmd->value - speed;
+            remaining_distance = cmd->value - speed;
             send_dst = 1;
             break;
         case END:
             break;
         case SPEED:
-            speed = curr_cmd->value;
+            speed = cmd->value;
             remaining_distance -= speed;
             break;
         case ALTITUDE:
-            alt_period = curr_cmd->value / 100;
+            alt_period = cmd->value / 100;
             if (alt_period != 0) {
                 enable_adc();
             } else {
@@ -324,8 +384,26 @@ void process_cmd(const command_t* curr_cmd) {
             timer_counter = 0;
             break;
         case MANUAL:
+            manual_on = cmd->value;
             break;
         case LED:
+            switch (cmd->value) {
+                case 0:
+                    LATA = 0; LATB = 0; LATC = 0; LATD = 0;
+                    break;
+                case 1:
+                    LATD = 0x01;
+                    break;
+                case 2:
+                    LATC = 0x01;
+                    break;
+                case 3:
+                    LATB = 0x01;
+                    break;
+                case 4:
+                    LATA = 0x01;
+                    break;
+            }
             break;
         default:
             break;
@@ -541,7 +619,7 @@ void main(void) {
     init_serial();
     init_interrupts();
     init_timer();
-    init_adcon();
+    //init_adcon();
     start_system();
     
     while(1) {
