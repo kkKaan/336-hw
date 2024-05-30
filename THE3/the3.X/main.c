@@ -90,7 +90,7 @@ int speed = 0;
 int send_dst = 0;
 int alt_period = 0;
 int adc_val = 9000;
-int timer_counter = 0;
+int timer_counter = 1;
 int manual_on = 0;
 uint8_t last_portb = 0;
 int write_prs = 0;
@@ -107,11 +107,16 @@ void receive_isr() {
 void transmit_isr() {
     PIR1bits.TX1IF = 0;    // Acknowledge interrupt
     // If all bytes are transmitted, turn off transmission
+   
     if (buf_isempty(OUTBUF)) {
+        while (TXSTA1bits.TRMT == 0);
         TXSTA1bits.TXEN = 0;
     }
+    
     // Otherwise, send next byte
-    else TXREG1 = buf_pop(OUTBUF);
+    else {
+         TXREG1 = buf_pop(OUTBUF);
+    }    
 }
 
 void handle_timer() {
@@ -125,7 +130,7 @@ void handle_timer() {
     }
        
     if (alt_period != 0) {
-        if (timer_counter > 0 && (timer_counter % alt_period == 0)) {
+        if (timer_counter % alt_period == 0) {
             cmd1.type = ALTITUDE;
             cmd1.value = adc_val;
             //write_to_output(&cmd1);
@@ -141,7 +146,7 @@ void handle_timer() {
     
     if (send_dst) {
         write_to_output(&cmd1);
-        buf_push('#', OUTBUF);
+        //buf_push('#', OUTBUF);
     }
     
     timer_counter++;
@@ -392,12 +397,12 @@ void process_cmd(const command_t* cmd) {
             break;
         case ALTITUDE:
             alt_period = cmd->value / 100;
+            timer_counter = 1;
             if (alt_period != 0) {
                 enable_adc();
             } else {
                 disable_adc();
             }
-            timer_counter = 0;
             break;
         case MANUAL:
             manual_on = cmd->value;
@@ -429,7 +434,7 @@ void process_cmd(const command_t* cmd) {
 }
 
 void write_to_output(const command_t* cmd) {
-    //disable_rxtx();
+    disable_rxtx();
     buf_push('$', OUTBUF);
     int i = cmd->value;
     char hex[5] = {0};
@@ -471,7 +476,7 @@ void write_to_output(const command_t* cmd) {
     buf_push('#', OUTBUF);
     
     //buf_push('#', OUTBUF); // junk char
-    //enable_rxtx();
+    enable_rxtx();
 }
 
 /* The packet task is responsible from monitoring the input buffer, identify
@@ -555,6 +560,7 @@ void output_task() {
          // first char and enable transmission
          TXSTA1bits.TXEN = 1;
          TXREG1 = buf_pop(OUTBUF);
+         
      }
      enable_rxtx();
 }
