@@ -90,11 +90,13 @@ void transmit_isr() {
     PIR1bits.TX1IF = 0;    // Acknowledge interrupt
     // If all bytes are transmitted, turn off transmission
     if (buf_isempty(OUTBUF)) {
-        //while (TXSTA1bits.TRMT == 0);
         TXSTA1bits.TXEN = 0;
     }
     // Otherwise, send next byte
-    else TXREG1 = buf_pop(OUTBUF);
+    else {
+        TXREG1 = buf_pop(OUTBUF);
+    }
+    while (TXSTA1bits.TRMT == 0);
 }
 
 void handle_timer() {
@@ -311,6 +313,10 @@ int string_compare_3(const uint8_t* a, const uint8_t* b)
     return 1;
 }
 
+/*
+ * Calculates the required amount of number characters for a given command
+ * prefix.
+ */
 int cmd_len(const uint8_t* cmd_data, command_t* cmd) {
     if (string_compare_3(cmd_data, "GOO")) {
         cmd->type = GOO;
@@ -342,6 +348,9 @@ int cmd_len(const uint8_t* cmd_data, command_t* cmd) {
     }
 }
 
+/*
+ * Executes the command logic.
+ */
 void process_cmd(const command_t* cmd) {
     switch(cmd->type) {
         case GOO:
@@ -393,6 +402,10 @@ void process_cmd(const command_t* cmd) {
     }
 }
 
+/*
+ * Writes the command to the output buffer, which will later be sent via
+ * serial communication protocols.
+ */
 void write_to_output(const command_t* cmd) {
     buf_push('$', OUTBUF);
     int i = cmd->value;
@@ -433,13 +446,20 @@ void write_to_output(const command_t* cmd) {
         }
     }
     buf_push('#', OUTBUF);
-    
-    buf_push('#', OUTBUF); // junk char
+
+    // buf_push('#', OUTBUF); // junk char
 }
 
 void packet_task() {
     disable_rxtx();
     uint8_t v;
+    /*
+     * The finite state machine has three states. The first state is waiting for
+     * dollar sign. If it receives the dollar sign, then it receives the body.
+     * After recognizing the character and getting enough characters to end the
+     * input, it goes into acknowledge state, and processes the command by
+     * executing its logic.
+     */
     switch(pkt_state) {
     // wait for $
     case PKT_WAIT_HEADER:
@@ -509,6 +529,7 @@ void output_task() {
      enable_rxtx();
 }
 
+/*
 void adc_task() {
     if (alt_period == 0) return;
     
@@ -526,6 +547,7 @@ void adc_task() {
         adc_val = 12000;
     }
 }
+ */
 
 void main(void) {
     init_ports();
