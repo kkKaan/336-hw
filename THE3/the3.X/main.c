@@ -164,6 +164,8 @@ void handle_adc() {
     } else {
         adc_val = 12000;
     }
+    
+    GODONE = 1;
 }
 
 void handle_portb() {
@@ -290,6 +292,7 @@ void init_adcon() {
 void enable_adc() {
     ADCON0bits.ADON = 1;
     PIE1bits.ADIE = 1;
+    GODONE = 1;
 }
 
 void disable_adc() {
