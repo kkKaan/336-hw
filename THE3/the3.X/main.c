@@ -1,3 +1,12 @@
+/*
+ * Group 26
+ * -------------------------
+ * Authors:
+ * Ahmet Eren Çolak 2587921
+ * Murat Bolu       2521300
+ * Kaan Karaçanta   2448546
+ */
+
 
 #include <xc.h>
 #include <stdint.h>
