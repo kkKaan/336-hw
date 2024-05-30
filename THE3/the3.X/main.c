@@ -173,7 +173,7 @@ void handle_adc() {
         adc_val = 12000;
     }
     
-    set_godone = 1;
+    set_godone = 0;
 }
 
 void handle_portb() {
