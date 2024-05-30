@@ -3,34 +3,15 @@
 #include <stdint.h>
 #include "pragmas.h"
 
-// These are used to disable/enable UART interrupts before/after
-// buffering functions are called from the main thread. This prevents
-// critical race conditions that result in corrupt buffer data and hence
-// incorrect processing
 inline void disable_rxtx( void ) { PIE1bits.RC1IE = 0;PIE1bits.TX1IE = 0;}
 inline void enable_rxtx( void )  { PIE1bits.RC1IE = 1;PIE1bits.TX1IE = 1;}
-
-/* **** Error outputs and functions **** */
-char * err_str = 0;
-// Prevents the compiler from duplicating the subsequently function
-// which is done when the function is called from both the main and ISR
-// contexts
-#pragma interrupt_level 2 
-void error_overflow()  { PORTB |= 0x01; err_str = "IO buffer overflow!";}
-#pragma interrupt_level 2 // Prevents duplication of function
-void error_underflow() { PORTB |= 0x02; err_str = "IO buffer underflow!";}
-void error_packet()    { PORTB |= 0x04; err_str = "Packet format error!";}
-void error_syntax()    { PORTB |= 0x08; err_str = "Syntax error!";}
-void error_stack()     { PORTB |= 0x10; err_str = "Stack error!";}
-void error_variable()  { PORTB |= 0x20; err_str = "Variable error!";}
-void error_clear()     { PORTB &= 0xC0; err_str = 0; }
 
 /* **** Ring-buffers for incoming and outgoing data **** */
 // These buffer functions are modularized to handle both the input and
 // output buffers with an input argument.
 typedef enum {INBUF = 0, OUTBUF = 1} buf_t;
 
-#define BUFSIZE 128        /* Static buffer size. Maximum amount of data */
+#define BUFSIZE 128       /* Static buffer size. Maximum amount of data */
 uint8_t inbuf[BUFSIZE];   /* Preallocated buffer for incoming data */
 uint8_t outbuf[BUFSIZE];  /* Preallocated buffer for outgoing data  */
 uint8_t head[2] = {0, 0}; /* head for pushing, tail for popping */
@@ -46,14 +27,14 @@ void buf_push( uint8_t v, buf_t buf) {
     else outbuf[head[buf]] = v;
     head[buf]++;
     if (head[buf] == BUFSIZE) head[buf] = 0;
-    if (head[buf] == tail[buf]) { error_overflow(); }
+    if (head[buf] == tail[buf]) { /*error_overflow();*/ }
 }
 /* Retrieve data from buffer */
 #pragma interrupt_level 2 // Prevents duplication of function
 uint8_t buf_pop( buf_t buf ) {
     uint8_t v;
     if (buf_isempty(buf)) { 
-        error_underflow(); return 0;
+        /*error_underflow();*/ return 0;
     } else {
         if (buf == INBUF) v = inbuf[tail[buf]];
         else v = outbuf[tail[buf]];
@@ -85,17 +66,17 @@ typedef struct {
 
 command_t cmd1 = {.type = DISTANCE, .value = 125};
 
-int remaining_distance = -1;
-int speed = 0;
-int send_dst = 0;
-int alt_period = 0;
-int adc_val = 9000;
-int timer_counter = 1;
-int manual_on = 0;
-uint8_t last_portb = 0;
-int write_prs = 0;
-int prs_led = 0;
-int set_godone = 0;
+volatile int remaining_distance = -1;
+volatile int speed = 0;
+volatile int should_send = 0;
+volatile int alt_period = 0;
+volatile int adc_val = 9000;
+volatile int timer_counter = 1;
+volatile int manual_on = 0;
+volatile uint8_t last_portb = 0;
+volatile int write_prs = 0;
+volatile int prs_led = 0;
+volatile int set_godone = 0;
 
 void write_to_output(const command_t* cmd);
 
@@ -121,30 +102,24 @@ void handle_timer() {
        
     cmd1.type = DISTANCE;
     cmd1.value = remaining_distance;
-    
-    if (send_dst) {
-        
-    }
        
     if (alt_period != 0) {
         if (timer_counter % alt_period == 0) {
             cmd1.type = ALTITUDE;
             cmd1.value = adc_val;
             GODONE = 1;
-            //write_to_output(&cmd1);
+           
         }
     }
     
     if (manual_on && write_prs) {
         cmd1.type = PRESS;
         cmd1.value = prs_led;
-        //write_to_output(&cmd1);
         write_prs = 0;
     }
     
-    if (send_dst) {
+    if (should_send) {
         write_to_output(&cmd1);
-        //buf_push('#', OUTBUF);
     }
 
     timer_counter++;
@@ -176,7 +151,7 @@ void handle_portb() {
     char current_portb = PORTB; // Read the current state of Port B
     char changed_bits = current_portb ^ last_portb; // Determine which bits have changed
 
-    // Specifically check for changes in bits 5 and 6
+    // Specifically check for changes in bits 4, 5, 6, and 7
     if (changed_bits & (1 << 4)) { // RB4 
         if (current_portb & (1 << 4)) {
             prs_led = 4;
@@ -220,16 +195,11 @@ void __interrupt(low_priority) lowPriorityISR(void) {}
 
 /* **** Initialization functions **** */
 void init_ports() {
-    TRISB = 0xF0;
     TRISA = 0x00;
-    TRISC = 0x00;
+    TRISB = 0xF0;
+    TRISC = 0xB0;
     TRISD = 0x00;
 
-    //Port B pin 0: buffer overflow, pin1: buffer underflow, pin2: syntax err
-    // TRISB = 0xC0;
-    // PORTC pin 7 is input, pin 6 is output, rest is input
-    TRISC = 0xB0;
-    
     PORTA = 0;
     PORTB = 0;
     PORTC = 0;
@@ -237,10 +207,6 @@ void init_ports() {
 }
 
 void init_serial() {
-    // We will configure EUSART1 for 57600 baud
-    // SYNC = 0, BRGH = 0, BRG16 = 1. Simulator does not seem to work 
-    // very well with BRGH=1
-    
     TXSTA1bits.TX9 = 0;    // No 9th bit
     TXSTA1bits.TXEN = 0;   // Transmission is disabled for the time being
     TXSTA1bits.SYNC = 0; 
@@ -265,17 +231,16 @@ void init_interrupts() {
 
 void init_timer() {
     T0CON = 0x00;
-    
+
     T0CONbits.TMR0ON = 1;
     T0CONbits.T0CS = 0;
     T0CONbits.T08BIT = 0;
     T0CONbits.PSA = 0;
-    
-    //TODO: set scaler
+
     T0CONbits.T0PS0 = 0;
     T0CONbits.T0PS1 = 0;
     T0CONbits.T0PS2 = 1;
-    
+
     TMR0H = 0x85;
     TMR0L = 0xEE;
 }
@@ -324,10 +289,7 @@ void start_system() { INTCONbits.GIE = 1; }
 typedef enum {PKT_WAIT_HEADER, PKT_GET_BODY, PKT_WAIT_ACK} pkt_state_t;
 pkt_state_t pkt_state = PKT_WAIT_HEADER;
 
-uint8_t pkt_bodysize;           // Size of the current packet
-// Set to 1 when packet has been received. Must be set to 0 once packet is processed
-uint8_t pkt_valid = 0;
-uint8_t pkt_id = 0; // Incremented for every valid packet reception
+uint8_t pkt_bodysize; // Size of the current packet
 
 command_t curr_cmd;
 
@@ -384,9 +346,10 @@ void process_cmd(const command_t* cmd) {
     switch(cmd->type) {
         case GOO:
             remaining_distance = cmd->value - speed;
-            send_dst = 1;
+            should_send = 1;
             break;
         case END:
+            INTCONbits.GIE = 0;
             break;
         case SPEED:
             speed = cmd->value;
@@ -431,7 +394,6 @@ void process_cmd(const command_t* cmd) {
 }
 
 void write_to_output(const command_t* cmd) {
-    //disable_rxtx();
     buf_push('$', OUTBUF);
     int i = cmd->value;
     char hex[5] = {0};
@@ -473,28 +435,18 @@ void write_to_output(const command_t* cmd) {
     buf_push('#', OUTBUF);
     
     buf_push('#', OUTBUF); // junk char
-    //enable_rxtx();
 }
 
-/* The packet task is responsible from monitoring the input buffer, identify
- * the start marker 0x00, and retrieve all subsequent bytes until the end marker
- * 0xff is encountered. This packet will then be processed by the calc_task()
- * to parse and execute the arithmetic expression. */
 void packet_task() {
     disable_rxtx();
-    // Wait until new bytes arrive
-
     uint8_t v;
-
     switch(pkt_state) {
-
     // wait for $
     case PKT_WAIT_HEADER:
         if (buf_isempty(INBUF)) break;
         v = buf_pop(INBUF);
         enable_rxtx();
         if (v == PKT_HEADER) {
-            // Packet header is encountered, retrieve the rest of the packet
             pkt_state = PKT_GET_BODY;
             pkt_bodysize = 0;
         }
@@ -505,19 +457,17 @@ void packet_task() {
         enable_rxtx();
         if (v == PKT_END) {
             if (pkt_bodysize != 3 + cmd_val_len) {
-                error_packet();
+                /*error_packet();*/
                 pkt_bodysize = 0;
                 pkt_state = PKT_WAIT_HEADER;
                 break;
             }
             pkt_state = PKT_WAIT_ACK;
-            pkt_valid = 1;
         } else if (v == PKT_HEADER) {
             // Unexpected packet start. Abort current packet and restart
-            error_packet();
+            /*error_packet();*/
             pkt_bodysize = 0;
         } else {
-            // TODO: refactor
             if (pkt_bodysize < 3) {
                 cmd_data[pkt_bodysize] = v;
             } else if (pkt_bodysize == 3) {
@@ -530,7 +480,6 @@ void packet_task() {
             }
             pkt_bodysize++;
         }
-
         break;
     case PKT_WAIT_ACK:
         enable_rxtx();
@@ -541,7 +490,6 @@ void packet_task() {
         }
         process_cmd(&curr_cmd);
         pkt_state = PKT_WAIT_HEADER;
-        pkt_id++;
         break;
     }
 }
@@ -592,8 +540,6 @@ void main(void) {
         packet_task();
         output_task();
     }
-    
-    
-    
+
     return;
 }
