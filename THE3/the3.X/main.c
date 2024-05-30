@@ -120,22 +120,28 @@ void handle_timer() {
     cmd1.type = DISTANCE;
     cmd1.value = remaining_distance;
     
-    if (send_dst)
-        write_to_output(&cmd1);
-    
+    if (send_dst) {
+        //write_to_output(&cmd1);
+    }
+       
     if (alt_period != 0) {
-        if (timer_counter % alt_period == 0) {
+        if (timer_counter > 0 && (timer_counter % alt_period == 0)) {
             cmd1.type = ALTITUDE;
             cmd1.value = adc_val;
-            write_to_output(&cmd1);
+            //write_to_output(&cmd1);
         }
     }
     
     if (manual_on && write_prs) {
         cmd1.type = PRESS;
         cmd1.value = prs_led;
-        write_to_output(&cmd1);
+        //write_to_output(&cmd1);
         write_prs = 0;
+    }
+    
+    if (send_dst) {
+        buf_push('#', OUTBUF);
+        write_to_output(&cmd1);
     }
     
     timer_counter++;
@@ -460,7 +466,8 @@ void write_to_output(const command_t* cmd) {
         }
     }
     buf_push('#', OUTBUF);
-    buf_push('#', OUTBUF); // junk char
+    
+    //buf_push('#', OUTBUF); // junk char
     //enable_rxtx();
 }
 
@@ -532,8 +539,6 @@ void packet_task() {
         pkt_id++;
         break;
     }
-
-    
 }
 
 /* **** Tokenizer tools **** */
@@ -632,7 +637,6 @@ void adc_task() {
     GODONE = 1;
     while (GODONE);
     unsigned int result = (ADRES << 8) + ADRESL;
-    
     
     if (result < 256) {
         adc_val = 9000;
