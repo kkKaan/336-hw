@@ -95,6 +95,7 @@ int manual_on = 0;
 uint8_t last_portb = 0;
 int write_prs = 0;
 int prs_led = 0;
+int set_godone = 0;
 
 void write_to_output(const command_t* cmd);
 
@@ -107,16 +108,12 @@ void receive_isr() {
 void transmit_isr() {
     PIR1bits.TX1IF = 0;    // Acknowledge interrupt
     // If all bytes are transmitted, turn off transmission
-   
     if (buf_isempty(OUTBUF)) {
-        while (TXSTA1bits.TRMT == 0);
+        //while (TXSTA1bits.TRMT == 0);
         TXSTA1bits.TXEN = 0;
     }
-    
     // Otherwise, send next byte
-    else {
-         TXREG1 = buf_pop(OUTBUF);
-    }    
+    else TXREG1 = buf_pop(OUTBUF);
 }
 
 void handle_timer() {
@@ -126,13 +123,14 @@ void handle_timer() {
     cmd1.value = remaining_distance;
     
     if (send_dst) {
-        //write_to_output(&cmd1);
+        
     }
        
     if (alt_period != 0) {
         if (timer_counter % alt_period == 0) {
             cmd1.type = ALTITUDE;
             cmd1.value = adc_val;
+            
             //write_to_output(&cmd1);
         }
     }
@@ -147,6 +145,11 @@ void handle_timer() {
     if (send_dst) {
         write_to_output(&cmd1);
         //buf_push('#', OUTBUF);
+    }
+    
+    if (set_godone) {
+        set_godone = 0;
+        GODONE = 1; 
     }
     
     timer_counter++;
@@ -170,12 +173,12 @@ void handle_adc() {
         adc_val = 12000;
     }
     
-    GODONE = 1;
+    set_godone = 1;
 }
 
 void handle_portb() {
     INTCONbits.RBIF = 0;
-    __delay_ms(2);
+    //__delay_ms(2);
     char current_portb = PORTB; // Read the current state of Port B
     char changed_bits = current_portb ^ last_portb; // Determine which bits have changed
 
@@ -434,7 +437,7 @@ void process_cmd(const command_t* cmd) {
 }
 
 void write_to_output(const command_t* cmd) {
-    disable_rxtx();
+    //disable_rxtx();
     buf_push('$', OUTBUF);
     int i = cmd->value;
     char hex[5] = {0};
@@ -475,8 +478,8 @@ void write_to_output(const command_t* cmd) {
     }
     buf_push('#', OUTBUF);
     
-    //buf_push('#', OUTBUF); // junk char
-    enable_rxtx();
+    buf_push('#', OUTBUF); // junk char
+    //enable_rxtx();
 }
 
 /* The packet task is responsible from monitoring the input buffer, identify
@@ -560,7 +563,6 @@ void output_task() {
          // first char and enable transmission
          TXSTA1bits.TXEN = 1;
          TXREG1 = buf_pop(OUTBUF);
-         
      }
      enable_rxtx();
 }
