@@ -140,8 +140,8 @@ void handle_timer() {
     }
     
     if (send_dst) {
-        buf_push('#', OUTBUF);
         write_to_output(&cmd1);
+        buf_push('#', OUTBUF);
     }
     
     timer_counter++;
@@ -288,8 +288,8 @@ void init_adcon() {
 }
 
 void enable_adc() {
-    //ADCON0bits.ADON = 1;
-    //PIE1bits.ADIE = 1;
+    ADCON0bits.ADON = 1;
+    PIE1bits.ADIE = 1;
 }
 
 void disable_adc() {
@@ -541,81 +541,6 @@ void packet_task() {
     }
 }
 
-/* **** Tokenizer tools **** */
-
-/* "Tokens" are strings of non-whitespace characters separated by whitespaces.
- * They are essential for parsing packet contents, which consist of an initial
- * command character, followed by whitespace-separated (positive) integers and
- * arithmetic operators. */
-/*
-uint8_t tk_start; // Start index for the token
-uint8_t tk_size;  // Size of the token (0 if no token found)
-
-// Resets the tokenizer to start at the beginning pf packet
-void tk_reset() {
-    tk_start = 0;
-    tk_size = 0;
-}
-// Finds the next token in the packet data body
-void tk_next() {
-    if (tk_start > pkt_bodysize) return; // Return if no more data
-    tk_start = tk_start + tk_size; // Adjust starting location
-    tk_size = 0;
-    // Skip trailing whitespace, return if no data left in packet
-    while (pkt_body[tk_start]==' ' && tk_start < pkt_bodysize) tk_start++;
-    if (tk_start > pkt_bodysize) return;
-    // Search for the next whitespace or end of packet
-    while (pkt_body[tk_start+tk_size]!=' ' 
-            && tk_start+tk_size<pkt_bodysize) tk_size++;
-}
-*/
-
-/* ***** Serial output task **** */
-
-/* Output the current packet contents, marking the current token location */
-/*
-void output_packet( void ) {
-    uint8_t ind = 0;
-    while (ind < pkt_bodysize) {
-        disable_rxtx();
-        if (ind == tk_start) buf_push('>', OUTBUF);
-        else if (ind == tk_start+tk_size) buf_push('<', OUTBUF);
-        buf_push(pkt_body[ind++], OUTBUF);
-        enable_rxtx();
-    }
-}
- */
-/* Output a string to the outgoing buffer */
-//void output_str( char *str ) {
-//    uint8_t ind = 0;    
-//    while (str[ind] != 0) {
-//        disable_rxtx();
-//        buf_push(str[ind++], OUTBUF);
-//        enable_rxtx();
-//    }
-//}
-/* Output an integer to the outgoing buffer */
-//void output_int( int32_t v ) {
-//    
-//    if (v < 0) { 
-//        disable_rxtx(); buf_push('-', OUTBUF); enable_rxtx();
-//        v = -v; 
-//    }
-//    char vstr[16];
-//    uint8_t str_ptr = 0, m;
-//    if (v == 0) vstr[str_ptr++] = '0';
-//    else
-//        while (v != 0) {
-//            vstr[str_ptr++] = (v % 10)+'0';
-//            v = v / 10;
-//        }
-//    while (str_ptr != 0) {
-//        disable_rxtx(); buf_push(vstr[--str_ptr], OUTBUF); enable_rxtx();
-//    }
-//}
-
-
-
 typedef enum {OUTPUT_INIT, OUTPUT_RUN} output_st_t;
 output_st_t output_st = OUTPUT_INIT;
 /* Output task function */
@@ -658,7 +583,7 @@ void main(void) {
     start_system();
     
     while(1) {
-        adc_task();
+        //adc_task();
         packet_task();
         output_task();
     }
