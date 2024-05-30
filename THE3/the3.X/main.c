@@ -130,7 +130,7 @@ void handle_timer() {
         if (timer_counter % alt_period == 0) {
             cmd1.type = ALTITUDE;
             cmd1.value = adc_val;
-            
+            GODONE = 1;
             //write_to_output(&cmd1);
         }
     }
@@ -146,12 +146,7 @@ void handle_timer() {
         write_to_output(&cmd1);
         //buf_push('#', OUTBUF);
     }
-    
-    if (set_godone) {
-        set_godone = 0;
-        GODONE = 1; 
-    }
-    
+
     timer_counter++;
     
     TMR0H = 0x85;
@@ -173,7 +168,6 @@ void handle_adc() {
         adc_val = 12000;
     }
     
-    set_godone = 0;
 }
 
 void handle_portb() {
