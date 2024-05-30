@@ -270,7 +270,7 @@ void disable_adc() {
 void enable_portb() {
     INTCONbits.RBIE = 1;
     INTCON2bits.RBIP = 1;
-    INTCONbits.INT0IE = 1;
+    //INTCONbits.INT0IE = 1;
     last_portb = PORTB;
 }
 
