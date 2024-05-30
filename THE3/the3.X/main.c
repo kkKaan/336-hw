@@ -48,7 +48,7 @@ void enable_portb();
 void disable_portb();
 
 typedef enum {
-    GOO, // go defined before, use goo
+    GOO, // go defined before in standard library, use goo instead
     END,
     SPEED,
     ALTITUDE,
@@ -64,6 +64,7 @@ typedef struct {
     int value;
 } command_t;
 
+// cmd1 is sent in every timer interrupt.
 command_t cmd1 = {.type = DISTANCE, .value = 125};
 
 volatile int remaining_distance = -1;
@@ -71,6 +72,7 @@ volatile int speed = 0;
 volatile int should_send = 0;
 volatile int alt_period = 0;
 volatile int adc_val = 9000;
+// starts from 1 and resets every time altitude input is received.
 volatile int timer_counter = 1;
 volatile int manual_on = 0;
 volatile uint8_t last_portb = 0;
@@ -99,6 +101,12 @@ void transmit_isr() {
     while (TXSTA1bits.TRMT == 0);
 }
 
+/*
+ * cmd1 is sent in this procedure. It is first set to be DST, if altitude or
+ * manual modes are on, cmd1 is changed. should_send represents whether the
+ * first GOO command is received, so that we only send commands after the first
+ * input.
+ */
 void handle_timer() {
     INTCONbits.TMR0IF = 0;
        
@@ -130,6 +138,9 @@ void handle_timer() {
     TMR0L = 0xEE;
 }
 
+/*
+ * Handle Analog to Digital conversion.
+ */
 void handle_adc() {
     PIR1bits.ADIF = 0;
     
@@ -147,6 +158,11 @@ void handle_adc() {
     
 }
 
+/*
+ * Handle PORTB as recording the previous state and comparing with the current
+ * state. If there is a HIGH->LOW change, set the correct variables so that
+ * the corresponding PRS output can be sent.
+ */
 void handle_portb() {
     INTCONbits.RBIF = 0;
     //__delay_ms(2);
@@ -290,17 +306,22 @@ void start_system() { INTCONbits.GIE = 1; }
 // State machine states for packet reception. 
 typedef enum {PKT_WAIT_HEADER, PKT_GET_BODY, PKT_WAIT_ACK} pkt_state_t;
 pkt_state_t pkt_state = PKT_WAIT_HEADER;
-
 uint8_t pkt_bodysize; // Size of the current packet
 
-command_t curr_cmd;
+// only used in packet_task() to determine input command
+command_t input_cmd;
 
+// holds the input command data string as char array
 uint8_t cmd_data[3] = {0};
+// holds the input value data string as char array
 uint8_t val_data[5] = {0};
+// holds input command value length
 uint8_t cmd_val_len = 4;
 
-// returns 1 if equal, 0 otherwise
-// compares first three characters only, no bounds check
+/*
+ * returns 1 if equal, 0 otherwise
+ * compares first three characters only, no bounds check
+ */
 int string_compare_3(const uint8_t* a, const uint8_t* b)
 {
     for (int i = 0; i < 3; ++i)
@@ -491,7 +512,7 @@ void packet_task() {
             if (pkt_bodysize < 3) {
                 cmd_data[pkt_bodysize] = v;
             } else if (pkt_bodysize == 3) {
-                cmd_val_len = cmd_len(cmd_data, &curr_cmd);
+                cmd_val_len = cmd_len(cmd_data, &input_cmd);
                 val_data[0] = v;
             } else if (pkt_bodysize < 3 + cmd_val_len) {
                 val_data[pkt_bodysize - 3] = v;
@@ -504,11 +525,11 @@ void packet_task() {
     case PKT_WAIT_ACK:
         enable_rxtx();
         if (cmd_val_len == 2) {
-            sscanf(val_data, "%02x", &curr_cmd.value);
+            sscanf(val_data, "%02x", &input_cmd.value);
         } else if (cmd_val_len == 4) {
-            sscanf(val_data, "%04x", &curr_cmd.value);
+            sscanf(val_data, "%04x", &input_cmd.value);
         }
-        process_cmd(&curr_cmd);
+        process_cmd(&input_cmd);
         pkt_state = PKT_WAIT_HEADER;
         break;
     }
