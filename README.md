@@ -1,7 +1,7 @@
-# CENG336 THE2
+# CENG336 Homeworks
 Contributors: Murat Bolu, Ahmet Eren Çolak, Kaan Karaçanta
 
-PORTG is used instead of PORTA.
+<!-- PORTG is used instead of PORTA.
 Right: RG0
 Up   : RG2
 Down : RG3
@@ -10,5 +10,5 @@ Note that RG1 is not used, since it is broken in our board!
 
 Rotate: RB6
 Submit: RB7
-RB4 and RB5 are not used since they were not stable.
+RB4 and RB5 are not used since they were not stable. --
 
